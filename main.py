@@ -89,17 +89,27 @@ class RoboZigueZague(Robo):
         if self.rect.y > ALTURA:
             self.kill()
 
+class Vida_extra(RoboZigueZague):
+  def __init__(self, x, y):
+      super().__init__(x, y)
+      self.velocidade = 6
+      self.image.fill((0,0,255))
+  def atualizar_posicao(self):
+      return super().atualizar_posicao()
+  def update(self):
+      return super().update()      
 
 todos_sprites = pygame.sprite.Group()
 inimigos = pygame.sprite.Group()
 tiros = pygame.sprite.Group()
+vida_extra = pygame.sprite.Group()
 
 jogador = Jogador(LARGURA // 2, ALTURA - 60)
 todos_sprites.add(jogador)
 
 pontos = 0
 spawn_timer = 0
-
+spawn_timer_vida = 0
 rodando = True
 while rodando:
     clock.tick(FPS)
@@ -121,7 +131,18 @@ while rodando:
         todos_sprites.add(robo)
         inimigos.add(robo)
         spawn_timer = 0
+   
+   #controla a entrada das vidas extras     
+    spawn_timer_vida += 1
+    if spawn_timer_vida > 1000:
+        robo = Vida_extra(random.randint(40, LARGURA - 40), -40)
+        todos_sprites.add(robo)
+        vida_extra.add(robo)
+        spawn_timer_vida = 0
 
+    #colisão vida_extra x jogador
+    if pygame.sprite.spritecollide(jogador, vida_extra, True):
+            jogador.vida += 1
     # colisão tiro x robô
     colisao = pygame.sprite.groupcollide(inimigos, tiros, True, True)
     pontos += len(colisao)
