@@ -89,6 +89,46 @@ class RoboZigueZague(Robo):
         if self.rect.y > ALTURA:
             self.kill()
 
+class RoboCacador(Robo):
+    def __init__(self, x, y, velocidade=3, jitter=0.6, usar_jitter=True):
+        super().__init__(x, y, velocidade)
+        self.image.fill((255, 100, 0))  # laranja
+        self.jitter = jitter
+        self.usar_jitter = usar_jitter
+
+    def atualizar_posicao(self):
+        # posição alvo (jogador global)
+        tx = jogador.rect.centerx
+        ty = jogador.rect.centery
+        dx = tx - self.rect.centerx
+        dy = ty - self.rect.centery
+
+        # distância sem usar math.hypot (evita import extra)
+        dist = (dx*dx + dy*dy) ** 0.5
+        if dist == 0:
+            return
+
+        nx = dx / dist
+        ny = dy / dist
+
+        # acelera um pouco quando perto para comportamento mais agressivo
+        speed = self.velocidade + (1 if dist < 180 else 0)
+
+        # jitter opcional: pequena variação aleatória para parecer "impreciso"
+        jx = random.uniform(-self.jitter, self.jitter) if self.usar_jitter else 0
+        jy = random.uniform(-self.jitter, self.jitter) if self.usar_jitter else 0
+
+        # aplicar movimento (usar int/round para não acumular float no rect)
+        self.rect.x += int(nx * speed + jx)
+        self.rect.y += int(ny * speed + jy)
+
+    def update(self):
+        self.atualizar_posicao()
+        # remover se sair muito da tela
+        if (self.rect.top > ALTURA + 200 or self.rect.bottom < -200 or
+                self.rect.left < -200 or self.rect.right > LARGURA + 200):
+            self.kill()
+
 class Vida_extra(RoboZigueZague):
   def __init__(self, x, y):
       super().__init__(x, y)
@@ -127,7 +167,10 @@ while rodando:
     # timer de entrada dos inimigos
     spawn_timer += 1
     if spawn_timer > 40:
-        robo = RoboZigueZague(random.randint(40, LARGURA - 40), -40)
+        if random.random() < 0.15:
+            robo = RoboCacador(random.randint(40, LARGURA - 40), -40, velocidade=2)
+        else:
+            robo = RoboZigueZague(random.randint(40, LARGURA - 40), -40)
         todos_sprites.add(robo)
         inimigos.add(robo)
         spawn_timer = 0
