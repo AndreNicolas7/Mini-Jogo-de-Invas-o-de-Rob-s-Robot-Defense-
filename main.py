@@ -60,6 +60,18 @@ class Tiro(Entidade):
         if self.rect.y < 0:
             self.kill()
 
+class TiroDiagonal(Tiro):
+    def __init__(self, x, y, direcao_x):
+        super().__init__(x, y)
+        self.direcao_x = direcao_x
+        self.velocidade_x = 4
+
+    def update(self):
+        self.rect.y -= self.velocidade
+        self.rect.x += self.direcao_x * self.velocidade_x
+
+        if self.rect.y < 0 or self.rect.x < 0 or self.rect.x > LARGURA:
+            self.kill()
 
 # ROBO BASE
 class Robo(Entidade):
@@ -129,52 +141,37 @@ class RoboCacador(Robo):
                 self.rect.left < -200 or self.rect.right > LARGURA + 200):
             self.kill()
 
-class Vida_extra(RoboZigueZague):
-  def __init__(self, x, y):
-      super().__init__(x, y)
-      self.velocidade = 6
-      self.image.fill((0,0,255))
-  def atualizar_posicao(self):
-      return super().atualizar_posicao()
-  def update(self):
-      return super().update()      
 
-class Velocidade(RoboZigueZague):
-  def __init__(self, x, y):
-      super().__init__(x, y)
-      self.velocidade = 8
-      self.image.fill((163,73,14)) #roxo
-  def atualizar_posicao(self):
-      return super().atualizar_posicao()
-  def update(self):
-      return super().update()
-  
-class Tirotriplo(RoboZigueZague):
-  def __init__(self, x, y):
-      super().__init__(x, y)
-      self.velocidade = 8
-      self.image.fill((0,255,0)) #verde
-  def atualizar_posicao(self):
-      return super().atualizar_posicao()
-  def update(self):
-      return super().update()
-  
+class PowerUp(RoboZigueZague):
+    def __init__(self, x, y, tipo):
+        super().__init__(x, y)
+
+        self.tipo = tipo
+
+        if tipo == "vida":
+            self.image.fill((0, 0, 255)) #azul
+            self.velocidade = 6
+
+        elif tipo == "velocidade":
+            self.image.fill((163, 73, 14)) #roxo
+            self.velocidade = 6
+
+        elif tipo == "tirotriplo":
+            self.image.fill((255,141,161)) #rosa
+            self.velocidade = 6
+            
 todos_sprites = pygame.sprite.Group()
 inimigos = pygame.sprite.Group()
 tiros = pygame.sprite.Group()
-vida_extra = pygame.sprite.Group()
-velocidade = pygame.sprite.Group()
-tiroTriplo = pygame.sprite.Group()
+powerups = pygame.sprite.Group()
 
 jogador = Jogador(LARGURA // 2, ALTURA - 60)
 todos_sprites.add(jogador)
 
 pontos = 0
 spawn_timer = 0
-spawn_timer_vida = 0
-spawn_timer_velocidade = 0
-spawn_timer_tirot = 0
-tempos_de_velocidade = 0
+tempo_velocidade = 0
+tempo_tirotriplo = 0
 rodando = True
 while rodando:
     clock.tick(FPS)
@@ -185,24 +182,25 @@ while rodando:
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
-                if tempos_de_velocidade > 0:
+            
+                if tempo_tirotriplo> 0:
+                
                     # tiro central
                     tiro = Tiro(jogador.rect.centerx, jogador.rect.y)
                     todos_sprites.add(tiro)
                     tiros.add(tiro)
 
-                    # tiro esquerda
-                    tiro2 = Tiro(jogador.rect.centerx - 70, jogador.rect.y)
-                    todos_sprites.add(tiro2)
-                    tiros.add(tiro2)
+                    # tiro diagonal esquerda
+                    t_esq = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
+                    todos_sprites.add(t_esq)
+                    tiros.add(t_esq)
 
-                    # tiro direita
-                    tiro3 = Tiro(jogador.rect.centerx + 70, jogador.rect.y)
-                    todos_sprites.add(tiro3)
-                    tiros.add(tiro3)
+                    # tiro diagonal direita
+                    t_dir = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
+                    todos_sprites.add(t_dir)
+                    tiros.add(t_dir)
 
                 else:
-                    # tiro normal
                     tiro = Tiro(jogador.rect.centerx, jogador.rect.y)
                     todos_sprites.add(tiro)
                     tiros.add(tiro)
@@ -217,49 +215,25 @@ while rodando:
         todos_sprites.add(robo)
         inimigos.add(robo)
         spawn_timer = 0
-   
-   #controla a entrada das vidas extras     
-    spawn_timer_vida += 1
-    if spawn_timer_vida > 1000:
-        robo = Vida_extra(random.randint(40, LARGURA - 40), -40)
+    if random.random() < 0.005:  # 0.5% de chance por frame (~1 a cada 8–10s)
+        tipo = random.choice(["vida", "velocidade", "tirotriplo"])
+        robo = PowerUp(random.randint(40, LARGURA - 40), -40, tipo)
         todos_sprites.add(robo)
-        vida_extra.add(robo)
-        spawn_timer_vida = 0
-    #controla a entrada da velocidade extra
-    spawn_timer_velocidade+= 1
-    if spawn_timer_velocidade > 1000:
-        robo = Velocidade(random.randint(40, LARGURA - 40), -40)
-        todos_sprites.add(robo)
-        velocidade.add(robo)
-        spawn_timer_velocidade = 0
-    
-    #controla a entrada do tiro triplo
-    spawn_timer_tirot+= 1
-    if spawn_timer_tirot > 1000:
-        robo = Tirotriplo(random.randint(40, LARGURA - 40), -40)
-        todos_sprites.add(robo)
-        tiroTriplo.add(robo)
-        spawn_timer_tirot = 0
+        powerups.add(robo)
 
-    #colisão vida_extra x jogador
-    if pygame.sprite.spritecollide(jogador, vida_extra, True):
+    #colisão dos power ups
+    colisao_pu = pygame.sprite.spritecollide(jogador, powerups, True)
+
+    for p in colisao_pu:
+        if p.tipo == "vida":
             jogador.vida += 1
-            
-    #colisão velocidade x jogador
-    if pygame.sprite.spritecollide(jogador, velocidade, True):
+
+        elif p.tipo == "velocidade":
             jogador.velocidade = 10
-            tempos_de_velocidade = FPS * 5
-    
-    #determinar um tempo pra velocidade
-    if tempos_de_velocidade > 0:
-        tempos_de_velocidade -= 1
-        if tempos_de_velocidade == 0:
-            jogador.velocidade = 5
-    
-    #colisão tiro triplo x jogador
-    if pygame.sprite.spritecollide(jogador, tiroTriplo, True):
-            
-            tempos_de_velocidade = FPS * 5
+            tempo_velocidade = FPS * 5
+
+        elif p.tipo == "tirotriplo":
+            tempo_tirotriplo = FPS * 5
             
     # colisão tiro x robô
     colisao = pygame.sprite.groupcollide(inimigos, tiros, True, True)
@@ -271,7 +245,12 @@ while rodando:
         if jogador.vida <= 0:
             print("GAME OVER!")
             rodando = False
-
+    if tempo_velocidade > 0:
+        tempo_velocidade -= 1
+        if tempo_velocidade == 0:
+            jogador.velocidade = 5
+    if tempo_tirotriplo > 0:
+        tempo_tirotriplo -= 1
     # atualizar
     todos_sprites.update()
 
