@@ -143,7 +143,17 @@ class Velocidade(RoboZigueZague):
   def __init__(self, x, y):
       super().__init__(x, y)
       self.velocidade = 8
-      self.image.fill((163,73,164)) #roxo
+      self.image.fill((163,73,14)) #roxo
+  def atualizar_posicao(self):
+      return super().atualizar_posicao()
+  def update(self):
+      return super().update()
+  
+class Tirotriplo(RoboZigueZague):
+  def __init__(self, x, y):
+      super().__init__(x, y)
+      self.velocidade = 8
+      self.image.fill((0,255,0)) #verde
   def atualizar_posicao(self):
       return super().atualizar_posicao()
   def update(self):
@@ -154,6 +164,7 @@ inimigos = pygame.sprite.Group()
 tiros = pygame.sprite.Group()
 vida_extra = pygame.sprite.Group()
 velocidade = pygame.sprite.Group()
+tiroTriplo = pygame.sprite.Group()
 
 jogador = Jogador(LARGURA // 2, ALTURA - 60)
 todos_sprites.add(jogador)
@@ -162,6 +173,7 @@ pontos = 0
 spawn_timer = 0
 spawn_timer_vida = 0
 spawn_timer_velocidade = 0
+spawn_timer_tirot = 0
 tempos_de_velocidade = 0
 rodando = True
 while rodando:
@@ -173,9 +185,27 @@ while rodando:
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
-                tiro = Tiro(jogador.rect.centerx, jogador.rect.y)
-                todos_sprites.add(tiro)
-                tiros.add(tiro)
+                if tempos_de_velocidade > 0:
+                    # tiro central
+                    tiro = Tiro(jogador.rect.centerx, jogador.rect.y)
+                    todos_sprites.add(tiro)
+                    tiros.add(tiro)
+
+                    # tiro esquerda
+                    tiro2 = Tiro(jogador.rect.centerx - 70, jogador.rect.y)
+                    todos_sprites.add(tiro2)
+                    tiros.add(tiro2)
+
+                    # tiro direita
+                    tiro3 = Tiro(jogador.rect.centerx + 70, jogador.rect.y)
+                    todos_sprites.add(tiro3)
+                    tiros.add(tiro3)
+
+                else:
+                    # tiro normal
+                    tiro = Tiro(jogador.rect.centerx, jogador.rect.y)
+                    todos_sprites.add(tiro)
+                    tiros.add(tiro)
 
     # timer de entrada dos inimigos
     spawn_timer += 1
@@ -202,6 +232,14 @@ while rodando:
         todos_sprites.add(robo)
         velocidade.add(robo)
         spawn_timer_velocidade = 0
+    
+    #controla a entrada do tiro triplo
+    spawn_timer_tirot+= 1
+    if spawn_timer_tirot > 1000:
+        robo = Tirotriplo(random.randint(40, LARGURA - 40), -40)
+        todos_sprites.add(robo)
+        tiroTriplo.add(robo)
+        spawn_timer_tirot = 0
 
     #colisão vida_extra x jogador
     if pygame.sprite.spritecollide(jogador, vida_extra, True):
@@ -217,6 +255,11 @@ while rodando:
         tempos_de_velocidade -= 1
         if tempos_de_velocidade == 0:
             jogador.velocidade = 5
+    
+    #colisão tiro triplo x jogador
+    if pygame.sprite.spritecollide(jogador, tiroTriplo, True):
+            
+            tempos_de_velocidade = FPS * 5
             
     # colisão tiro x robô
     colisao = pygame.sprite.groupcollide(inimigos, tiros, True, True)
