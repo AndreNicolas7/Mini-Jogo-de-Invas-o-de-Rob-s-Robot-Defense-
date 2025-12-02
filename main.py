@@ -139,10 +139,21 @@ class Vida_extra(RoboZigueZague):
   def update(self):
       return super().update()      
 
+class Velocidade(RoboZigueZague):
+  def __init__(self, x, y):
+      super().__init__(x, y)
+      self.velocidade = 8
+      self.image.fill((163,73,164)) #roxo
+  def atualizar_posicao(self):
+      return super().atualizar_posicao()
+  def update(self):
+      return super().update()
+  
 todos_sprites = pygame.sprite.Group()
 inimigos = pygame.sprite.Group()
 tiros = pygame.sprite.Group()
 vida_extra = pygame.sprite.Group()
+velocidade = pygame.sprite.Group()
 
 jogador = Jogador(LARGURA // 2, ALTURA - 60)
 todos_sprites.add(jogador)
@@ -150,6 +161,8 @@ todos_sprites.add(jogador)
 pontos = 0
 spawn_timer = 0
 spawn_timer_vida = 0
+spawn_timer_velocidade = 0
+tempos_de_velocidade = 0
 rodando = True
 while rodando:
     clock.tick(FPS)
@@ -182,10 +195,29 @@ while rodando:
         todos_sprites.add(robo)
         vida_extra.add(robo)
         spawn_timer_vida = 0
+    #controla a entrada da velocidade extra
+    spawn_timer_velocidade+= 1
+    if spawn_timer_velocidade > 1000:
+        robo = Velocidade(random.randint(40, LARGURA - 40), -40)
+        todos_sprites.add(robo)
+        velocidade.add(robo)
+        spawn_timer_velocidade = 0
 
     #colisão vida_extra x jogador
     if pygame.sprite.spritecollide(jogador, vida_extra, True):
             jogador.vida += 1
+            
+    #colisão velocidade x jogador
+    if pygame.sprite.spritecollide(jogador, velocidade, True):
+            jogador.velocidade = 10
+            tempos_de_velocidade = FPS * 5
+    
+    #determinar um tempo pra velocidade
+    if tempos_de_velocidade > 0:
+        tempos_de_velocidade -= 1
+        if tempos_de_velocidade == 0:
+            jogador.velocidade = 5
+            
     # colisão tiro x robô
     colisao = pygame.sprite.groupcollide(inimigos, tiros, True, True)
     pontos += len(colisao)
