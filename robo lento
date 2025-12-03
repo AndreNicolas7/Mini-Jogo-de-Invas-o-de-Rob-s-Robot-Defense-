@@ -1,0 +1,12 @@
+class RoboLento(Robo):
+    def __init__(self, x, y):
+        super().__init__(x, y, velocidade=1)
+        self.image.fill((150, 0, 0))
+
+    def atualizar_posicao(self):
+        self.rect.y += self.velocidade
+        if self.rect.y > ALTURA:
+            self.kill()
+
+    def update(self):
+        self.atualizar_posicao()
