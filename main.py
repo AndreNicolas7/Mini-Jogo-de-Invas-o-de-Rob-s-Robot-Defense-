@@ -43,7 +43,7 @@ class Jogador(Entidade):
             self.mover(-self.velocidade, 0)
         if keys[pygame.K_d]:
             self.mover(self.velocidade, 0)
-
+# editei toma
         # limites de tela
         self.rect.x = max(0, min(self.rect.x, LARGURA - 40))
         self.rect.y = max(0, min(self.rect.y, ALTURA - 40))
@@ -264,5 +264,6 @@ while rodando:
     TELA.blit(texto, (10, 10))
 
     pygame.display.flip()
+
 
 pygame.quit()
