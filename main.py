@@ -103,7 +103,7 @@ class Explosao(pygame.sprite.Sprite):
 
     def update(self):
         self.contador += 1
-        if self.contador >= 5:  # tempo entre quadros
+        if self.contador >= 10:  # tempo entre quadros
             self.contador = 0
             self.frame_index += 1
             if self.frame_index >= len(self.frames):
@@ -541,6 +541,7 @@ while rodando:
         explosao = Explosao(inimigo.rect.centerx, inimigo.rect.centery)
         explosoes.add(explosao)
         todos_sprites.add(explosao)
+        pontos+=1
 
     hits = pygame.sprite.groupcollide(inimigos, tiros, False, True)
     for inimigo, lista_tiros in hits.items():
