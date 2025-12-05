@@ -1,5 +1,6 @@
 import pygame
 import random
+import math
 
 pygame.init()
 
@@ -139,6 +140,31 @@ class RoboCacador(Robo):
             self.rect.left < -200 or self.rect.right > LARGURA + 200):
             self.kill()
 
+
+class RoboCircular(Robo):
+    def __init__(self, x, y, raio, v_descida,v_angular):
+        super().__init__(x, y, velocidade=3)
+        self.center_x = x
+        self.center_y = y
+        self.raio = raio
+        self.v_descida = v_descida
+        self.v_angular = v_angular
+        self.angulo = 0
+
+
+    def atualizar_posicao(self):
+        self.angulo += self.v_angular
+        if self.angulo > 360:
+            self.angulo -= 360
+        angulo_rad = math.radians(self.angulo)
+        self.center_y += self.v_descida
+        self.rect.x = int(self.center_x + self.raio * math.cos(angulo_rad))
+        self.rect.y = int(self.center_y + self.raio * math.sin(angulo_rad))
+
+    def update(self):
+        self.atualizar_posicao()
+        if self.rect.y > ALTURA:
+            self.kill()
 
 #BOSS
 class Boss(Robo):
@@ -284,6 +310,9 @@ while rodando:
         if spawn_timer > 40:
             if random.random() < 0.15:
                 robo = RoboCacador(random.randint(40, LARGURA - 40), -40, velocidade=2)
+
+            elif random.random() < 0.3:
+                robo = RoboCircular(x=random.randint(40, LARGURA - 40),y=-40,raio=random.randint(20, 60),v_descida=2,v_angular=random.uniform(3, 6))
             else:
                 robo = RoboZigueZague(random.randint(40, LARGURA - 40), -40)
             todos_sprites.add(robo)
