@@ -69,7 +69,7 @@ sprites = {
 }
 
 # ESTADO DO JOGO
-estado_jogo = "NORMAL"  
+estado_jogo = "NORMAL"
 
 
 # CLASSE BASE
@@ -90,6 +90,28 @@ class Jogador(Entidade):
     def __init__(self, x, y):
         super().__init__(x, y, 5, 'jogador') 
         self.vida = 5
+        self.transformado = False
+        self.tamanho_original = (60, 60)
+        self.velocidade_original = 5
+        self.cacador_desabilitado = False  # Controla se caçador pode aparecer
+
+    def ativar_transformacao(self):
+        """Ativa o modo transformado (Easter Egg do Caçador)"""
+        self.transformado = True
+        # Aumenta o tamanho um pouco
+        novo_tamanho = (int(60 * 1.3), int(60 * 1.3))
+        self.image = pygame.transform.scale(sprites['jogador'], novo_tamanho)
+        self.rect = self.image.get_rect(center=self.rect.center)
+        # Aumenta velocidade (balanceado)
+        self.velocidade = 6.5
+
+    def desativar_transformacao(self):
+        """Desativa o modo transformado"""
+        self.transformado = False
+        self.image = pygame.transform.scale(sprites['jogador'], self.tamanho_original)
+        self.rect = self.image.get_rect(center=self.rect.center)
+        self.velocidade = self.velocidade_original
+        self.cacador_desabilitado = True  # Caçador não spawna mais após transformação
 
     def update(self):
         keys = pygame.key.get_pressed()
@@ -146,6 +168,7 @@ class RoboZigueZague(Robo):
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=2, image_key='robo_zigue')
         self.direcao = 1
+        self.vida = 1
 
     def atualizar_posicao(self):
         self.rect.y += self.velocidade
@@ -164,17 +187,19 @@ class RoboCiclico(RoboZigueZague):
     def __init__(self, x, y):
         super(RoboZigueZague, self).__init__(x, y, velocidade=2, image_key='robo_ciclico') 
         self.direcao = 1
+        self.vida = 1
 
 class RoboLento(RoboZigueZague): 
     def __init__(self, x, y):
         super(RoboZigueZague, self).__init__(x, y, velocidade=1, image_key='robo_lento') 
         self.direcao = 1
+        self.vida = 1
 
 class RoboRapido(RoboZigueZague): 
     def __init__(self, x, y):
         super(RoboZigueZague, self).__init__(x, y, velocidade=4, image_key='robo_rapido') 
         self.direcao = 1
-
+        self.vida = 1 
 
 # ROBO Caçador
 class RoboCacador(Robo):
@@ -182,6 +207,8 @@ class RoboCacador(Robo):
         super().__init__(x, y, velocidade, image_key='robo_cacador') 
         self.jitter = jitter
         self.usar_jitter = usar_jitter
+        self.easter_egg = False
+        self.vida = 1
 
     def atualizar_posicao(self):
         tx = jogador.rect.centerx
@@ -219,6 +246,7 @@ class RoboCircular(Robo):
         self.v_descida = v_descida
         self.v_angular = v_angular
         self.angulo = 0
+        self.vida = 1
 
     def atualizar_posicao(self):
         self.angulo += self.v_angular
@@ -244,6 +272,7 @@ class RoboPulante(Robo):
         self.cooldown_pulo = random.randint(40, 80) 
         self.timer = 0
         self.forca_pulo = random.randint(-80, -40)
+        self.vida = 1
 
     def atualizar_posicao(self):
         # Descida contínua
@@ -341,6 +370,10 @@ tempo_velocidade = 0
 tempo_tirotriplo = 0
 delay_tiro = 0
 
+# Variáveis para o easter egg
+caçador_transformacao = None  # Referência ao caçador especial
+caçador_jaConhecido = False   # Flag para evitar múltiplos caçadores especiais
+
 rodando = True
 while rodando:
     clock.tick(FPS)
@@ -350,18 +383,29 @@ while rodando:
     delay_tiro += 0.2
     if delay_tiro >= 4:
         if keys[pygame.K_SPACE]:
-            if tempo_tirotriplo > 0:
-                t1 = Tiro(jogador.rect.centerx, jogador.rect.y)
-                t2 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
-                t3 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
-                for t in (t1, t2, t3):
+            # Reduz delay de tiro quando transformado
+            delay_tiro_ajustado = 2 if jogador.transformado else 4
+            if delay_tiro >= delay_tiro_ajustado:
+                if tempo_tirotriplo > 0:
+                    t1 = Tiro(jogador.rect.centerx, jogador.rect.y)
+                    t2 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
+                    t3 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
+                    for t in (t1, t2, t3):
+                        todos_sprites.add(t)
+                        tiros.add(t)
+                elif jogador.transformado:
+                    # Tiro triplo quando transformado
+                    t1 = Tiro(jogador.rect.centerx, jogador.rect.y)
+                    t2 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
+                    t3 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
+                    for t in (t1, t2, t3):
+                        todos_sprites.add(t)
+                        tiros.add(t)
+                else:
+                    t = Tiro(jogador.rect.centerx, jogador.rect.y)
                     todos_sprites.add(t)
                     tiros.add(t)
-            else:
-                t = Tiro(jogador.rect.centerx, jogador.rect.y)
-                todos_sprites.add(t)
-                tiros.add(t)
-            delay_tiro = 0
+                delay_tiro = 0
                 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -374,6 +418,12 @@ while rodando:
                 pontos = 0
                 jogador.vida = 5
                 jogador.rect.center = (LARGURA // 2, ALTURA - 60)
+                
+                # Reverter transformação ao reiniciar
+                if jogador.transformado:
+                    jogador.desativar_transformacao()
+                caçador_jaConhecido = False
+                jogador.cacador_desabilitado = False  # Reseta para próximo jogo
 
                 # limpar tudo menos o jogador
                 for grp in (inimigos, tiros, powerups, tiros_chefao, todos_sprites):
@@ -403,7 +453,8 @@ while rodando:
             rand = random.random()
             x_pos = random.randint(50, LARGURA - 50) 
             
-            if rand < 0.15:
+            if rand < 0.15 and not jogador.transformado and not jogador.cacador_desabilitado:
+                # Caçador NÃO spawna quando transformado ou após ser usado
                 robo = RoboCacador(x_pos, -50)
             elif rand < 0.30:
                 robo = RoboCircular(
@@ -426,7 +477,8 @@ while rodando:
             inimigos.add(robo)
             spawn_timer = 0
 
-        if random.random() < 0.005:
+        # Power-ups NÃO spawnam quando transformado
+        if random.random() < 0.005 and not jogador.transformado:
             tipo = random.choice(["vida", "velocidade", "tirotriplo"])
             r = PowerUp(random.randint(40, LARGURA - 40), -40, tipo)
             todos_sprites.add(r)
@@ -442,24 +494,66 @@ while rodando:
         elif p.tipo == "tirotriplo":
             tempo_tirotriplo = FPS * 5
 
-    hits = pygame.sprite.groupcollide(inimigos, tiros, True, True)
-    pontos += len(hits)
+    hits = pygame.sprite.groupcollide(inimigos, tiros, False, True)
+    for inimigo, lista_tiros in hits.items():
+        # Se transformado, inimigos precisam de 2 tiros
+        dano = len(lista_tiros)
+        if jogador.transformado:
+            if hasattr(inimigo, 'vida'):
+                inimigo.vida -= dano
+                if inimigo.vida <= 0:
+                    inimigo.kill()
+                    pontos += 1
+            else:
+                # Inimigos sem vida (normais) precisam de 2 tiros quando transformado
+                if dano >= 2:
+                    inimigo.kill()
+                    pontos += 1
+        else:
+            # Modo normal: 1 tiro mata
+            inimigo.kill()
+            pontos += len(lista_tiros)
 
     if chefao:
         tiros_acertaram = pygame.sprite.spritecollide(chefao, tiros, True)
         chefao.vida -= len(tiros_acertaram)
 
+    # COLISÃO ESPECIAL: Caçador (Easter Egg)
+    colisao_cacador = pygame.sprite.spritecollide(jogador, inimigos, False)
+    for inimigo in colisao_cacador:
+        if isinstance(inimigo, RoboCacador) and not jogador.transformado:
+            # Ativa transformação!
+            jogador.ativar_transformacao()
+            inimigo.kill()
+            # Muda as cores de fundo
+            cor_fundo_alterada = True
+        elif isinstance(inimigo, RoboCacador) and jogador.transformado:
+            # Se já está transformado, apenas mata o caçador normalmente
+            inimigo.kill()
+
+    # Tiros do chefão acertam o jogador
     if pygame.sprite.spritecollide(jogador, tiros_chefao, True):
         jogador.vida -= 1
+        # Reverte transformação ao tomar dano
+        if jogador.transformado:
+            jogador.desativar_transformacao()
+            caçador_jaConhecido = False
         if jogador.vida <= 0:
             print("GAME OVER")
             rodando = False
 
-    if pygame.sprite.spritecollide(jogador, inimigos, True):
-        jogador.vida -= 1
-        if jogador.vida <= 0:
-            print("GAME OVER")
-            rodando = False
+    # Colisão com inimigos normais (exceto caçador que já foi tratado)
+    colisao_inimigos = pygame.sprite.spritecollide(jogador, inimigos, True)
+    for inimigo in colisao_inimigos:
+        if not isinstance(inimigo, RoboCacador):  # Caçador já foi tratado acima
+            jogador.vida -= 1
+            # Reverte transformação ao tomar dano
+            if jogador.transformado:
+                jogador.desativar_transformacao()
+                caçador_jaConhecido = False
+            if jogador.vida <= 0:
+                print("GAME OVER")
+                rodando = False
 
     if tempo_velocidade > 0:
         tempo_velocidade -= 1
@@ -473,12 +567,19 @@ while rodando:
     tiros_chefao.update()
 
     # DESENHO
-    TELA.fill((20, 20, 20))
+    # Altera cor de fundo quando transformado
+    cor_fundo = (0, 20, 20) if jogador.transformado else (20, 20, 20)
+    TELA.fill(cor_fundo)
     todos_sprites.draw(TELA)
 
     font = pygame.font.SysFont(None, 30)
     texto = font.render(f"Vida: {jogador.vida} | Pontos: {pontos}", True, (255, 255, 255))
     TELA.blit(texto, (10, 10))
+    
+    # Exibe status de transformação
+    if jogador.transformado:
+        status_text = font.render("TRANSFORMADO!", True, (0, 255, 255))
+        TELA.blit(status_text, (LARGURA - 220, 10))
 
     # HUD do chefe
     if estado_jogo == "BOSS" and chefao:
@@ -499,3 +600,9 @@ while rodando:
     pygame.display.flip()
 
 pygame.quit()
+
+# Classe para controlar dano em inimigos
+class RoboComVida(Robo):
+    def __init__(self, x, y, velocidade, image_key, vida=1):
+        super().__init__(x, y, velocidade, image_key)
+        self.vida = vida
