@@ -221,29 +221,33 @@ pontos = 0
 spawn_timer = 0
 tempo_velocidade = 0
 tempo_tirotriplo = 0
+delay_tiro = 0
 
 rodando = True
 while rodando:
     clock.tick(FPS)
 
+    # TIRO DO JOGADOR
+    keys = pygame.key.get_pressed()
+    delay_tiro += 0.2
+    if delay_tiro >= 4:
+                if keys[pygame.K_SPACE]:
+                    if tempo_tirotriplo > 0:
+                        t1 = Tiro(jogador.rect.centerx, jogador.rect.y)
+                        t2 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
+                        t3 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
+                        for t in (t1, t2, t3):
+                            todos_sprites.add(t)
+                            tiros.add(t)
+                    else:
+                        t = Tiro(jogador.rect.centerx, jogador.rect.y)
+                        todos_sprites.add(t)
+                        tiros.add(t)
+                delay_tiro = 0
+                
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             rodando = False
-
-        # TIRO DO JOGADOR
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
-                if tempo_tirotriplo > 0:
-                    t1 = Tiro(jogador.rect.centerx, jogador.rect.y)
-                    t2 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
-                    t3 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
-                    for t in (t1, t2, t3):
-                        todos_sprites.add(t)
-                        tiros.add(t)
-                else:
-                    t = Tiro(jogador.rect.centerx, jogador.rect.y)
-                    todos_sprites.add(t)
-                    tiros.add(t)
 
         # REINICIAR APÓS VITÓRIA
         if estado_jogo == "WIN":
