@@ -66,7 +66,7 @@ sprites = {
     'power_tirotriplo': carregar_sprite('power_tirotriplo.png', cor_fallback=(255, 141, 161)),
     'boss': carregar_sprite('boss.png', cor_fallback=(0, 0, 150)), 
     'boss_tiro': carregar_sprite('boss_tiro.png', cor_fallback=(0, 0, 255)),
-     'explosao' : carregar_sprite('tentativa.jpg', cor_fallback=(255, 255, 255), largura=274, altura=384),
+     'explosao' : carregar_sprite('tentativa.png', cor_fallback=(255, 255, 255), largura=274, altura=384),
 }
 
 # ESTADO DO JOGO
@@ -76,7 +76,7 @@ explosao = sprites['explosao'].convert_alpha()
 
 explosao_frames = []
 cols = 1
-rows = 8
+rows = 1
 frame_width = explosao.get_width() // cols
 frame_height = explosao.get_height() // rows
 
@@ -103,10 +103,11 @@ class Explosao(pygame.sprite.Sprite):
 
     def update(self):
         self.contador += 1
-        if self.contador >= 10:  # tempo entre quadros
+        if self.contador >= 15:  # tempo entre quadros
             self.contador = 0
             self.frame_index += 1
             if self.frame_index >= len(self.frames):
+                
                 self.kill()  # explosão acaba
             else:
                 self.image = self.frames[self.frame_index]
