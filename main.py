@@ -150,16 +150,41 @@ class RoboCircular(Robo):
         self.v_descida = v_descida
         self.v_angular = v_angular
         self.angulo = 0
+        self.direcao = random.choice([1, -1])
+        self.trocar_timer = random.randint(30, 80)
 
 
     def atualizar_posicao(self):
-        self.angulo += self.v_angular
+        self.angulo += self.v_angular * self.direcao
         if self.angulo > 360:
             self.angulo -= 360
         angulo_rad = math.radians(self.angulo)
         self.center_y += self.v_descida
         self.rect.x = int(self.center_x + self.raio * math.cos(angulo_rad))
         self.rect.y = int(self.center_y + self.raio * math.sin(angulo_rad))
+
+    def update(self):
+        self.atualizar_posicao()
+        if self.rect.y > ALTURA:
+            self.kill()
+
+class RoboPulante(Robo):
+    def __init__(self, x, y):
+        super().__init__(x, y, velocidade=2)
+        self.image.fill((150, 0, 150))
+
+        self.cooldown_pulo = random.randint(20, 50)
+        self.timer = 0
+        self.forca_pulo = random.randint(40, 80)
+
+    def atualizar_posicao(self):
+        self.rect.y += self.velocidade
+        self.timer += 1
+
+        if self.timer >= self.cooldown_pulo:
+            self.rect.y += self.forca_pulo
+            self.timer = 0
+            self.cooldown_pulo = random.randint(20, 50)
 
     def update(self):
         self.atualizar_posicao()
@@ -310,9 +335,10 @@ while rodando:
         if spawn_timer > 40:
             if random.random() < 0.15:
                 robo = RoboCacador(random.randint(40, LARGURA - 40), -40, velocidade=2)
-
             elif random.random() < 0.3:
                 robo = RoboCircular(x=random.randint(40, LARGURA - 40),y=-40,raio=random.randint(20, 60),v_descida=2,v_angular=random.uniform(3, 6))
+            elif random.random() < 0.45:
+                robo = RoboPulante(random.randint(40, LARGURA - 40), -40)
             else:
                 robo = RoboZigueZague(random.randint(40, LARGURA - 40), -40)
             todos_sprites.add(robo)
