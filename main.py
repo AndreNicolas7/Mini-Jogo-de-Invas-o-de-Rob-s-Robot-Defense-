@@ -65,12 +65,51 @@ sprites = {
     'power_velocidade': carregar_sprite('power_velocidade.png', cor_fallback=(163, 73, 14)),
     'power_tirotriplo': carregar_sprite('power_tirotriplo.png', cor_fallback=(255, 141, 161)),
     'boss': carregar_sprite('boss.png', cor_fallback=(0, 0, 150)), 
-    'boss_tiro': carregar_sprite('boss_tiro.png', cor_fallback=(0, 0, 255)), 
+    'boss_tiro': carregar_sprite('boss_tiro.png', cor_fallback=(0, 0, 255)),
+     'explosao' : carregar_sprite('tentativa.jpg', cor_fallback=(255, 255, 255), largura=274, altura=384),
 }
 
 # ESTADO DO JOGO
 estado_jogo = "NORMAL"
 
+explosao = sprites['explosao'].convert_alpha()
+
+explosao_frames = []
+cols = 8
+rows = 1
+frame_width = explosao.get_width() // cols
+frame_height = explosao.get_height() // rows
+
+for i in range(rows):
+    for j in range(cols):
+        frame = explosao.subsurface(
+            (j * frame_width, i * frame_height, frame_width, frame_height)
+        )
+
+        # OPCIONAL: aumentar no jogo para ficar mais impactante
+        frame = pygame.transform.scale(frame, (80, 80))
+
+        explosao_frames.append(frame)
+
+# CLASSE EXPLOSÃO
+class Explosao(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.frames = explosao_frames
+        self.frame_index = 0
+        self.image = self.frames[self.frame_index]
+        self.rect = self.image.get_rect(center=(x, y))
+        self.contador = 0
+
+    def update(self):
+        self.contador += 1
+        if self.contador >= 5:  # tempo entre quadros
+            self.contador = 0
+            self.frame_index += 1
+            if self.frame_index >= len(self.frames):
+                self.kill()  # explosão acaba
+            else:
+                self.image = self.frames[self.frame_index]
 
 # CLASSE BASE
 class Entidade(pygame.sprite.Sprite):
@@ -359,6 +398,7 @@ inimigos = pygame.sprite.Group()
 tiros = pygame.sprite.Group()
 powerups = pygame.sprite.Group()
 tiros_chefao = pygame.sprite.Group()
+explosoes = pygame.sprite.Group()
 
 jogador = Jogador(LARGURA // 2, ALTURA - 60)
 todos_sprites.add(jogador)
@@ -493,6 +533,14 @@ while rodando:
             tempo_velocidade = FPS * 5
         elif p.tipo == "tirotriplo":
             tempo_tirotriplo = FPS * 5
+    
+    #explosão e colisões
+    acertos = pygame.sprite.groupcollide(inimigos, tiros, True, True)
+
+    for inimigo in acertos:
+        explosao = Explosao(inimigo.rect.centerx, inimigo.rect.centery)
+        explosoes.add(explosao)
+        todos_sprites.add(explosao)
 
     hits = pygame.sprite.groupcollide(inimigos, tiros, False, True)
     for inimigo, lista_tiros in hits.items():
@@ -565,6 +613,7 @@ while rodando:
 
     todos_sprites.update()
     tiros_chefao.update()
+    explosoes.update()
 
     # DESENHO
     # Altera cor de fundo quando transformado
@@ -576,6 +625,7 @@ while rodando:
     texto = font.render(f"Vida: {jogador.vida} | Pontos: {pontos}", True, (255, 255, 255))
     TELA.blit(texto, (10, 10))
     
+    explosoes.draw(TELA)
     # Exibe status de transformação
     if jogador.transformado:
         status_text = font.render("TRANSFORMADO!", True, (0, 255, 255))
