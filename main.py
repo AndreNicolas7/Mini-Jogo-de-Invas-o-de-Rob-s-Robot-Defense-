@@ -75,8 +75,8 @@ estado_jogo = "NORMAL"
 explosao = sprites['explosao'].convert_alpha()
 
 explosao_frames = []
-cols = 8
-rows = 1
+cols = 1
+rows = 8
 frame_width = explosao.get_width() // cols
 frame_height = explosao.get_height() // rows
 
