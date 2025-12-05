@@ -11,6 +11,9 @@ pygame.display.set_caption("Robot Defense - Template")
 FPS = 60
 clock = pygame.time.Clock()
 
+# ======== ESTADO DO JOGO ========
+estado_jogo = "NORMAL"   # NORMAL → BOSS_INCOMING → BOSS → WIN
+
 
 # CLASSE BASE
 class Entidade(pygame.sprite.Sprite):
@@ -43,8 +46,7 @@ class Jogador(Entidade):
             self.mover(-self.velocidade, 0)
         if keys[pygame.K_d]:
             self.mover(self.velocidade, 0)
-# editei toma
-        # limites de tela
+
         self.rect.x = max(0, min(self.rect.x, LARGURA - 40))
         self.rect.y = max(0, min(self.rect.y, ALTURA - 40))
 
@@ -60,6 +62,7 @@ class Tiro(Entidade):
         if self.rect.y < 0:
             self.kill()
 
+
 class TiroDiagonal(Tiro):
     def __init__(self, x, y, direcao_x):
         super().__init__(x, y)
@@ -73,6 +76,7 @@ class TiroDiagonal(Tiro):
         if self.rect.y < 0 or self.rect.x < 0 or self.rect.x > LARGURA:
             self.kill()
 
+
 # ROBO BASE
 class Robo(Entidade):
     def __init__(self, x, y, velocidade):
@@ -83,7 +87,7 @@ class Robo(Entidade):
         raise NotImplementedError
 
 
-# ROBO EXEMPLO — ZigueZague
+# ROBO ZigueZague
 class RoboZigueZague(Robo):
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=3)
@@ -101,6 +105,8 @@ class RoboZigueZague(Robo):
         if self.rect.y > ALTURA:
             self.kill()
 
+
+# ROBO Caçador
 class RoboCacador(Robo):
     def __init__(self, x, y, velocidade=3, jitter=0.6, usar_jitter=True):
         super().__init__(x, y, velocidade)
@@ -109,69 +115,113 @@ class RoboCacador(Robo):
         self.usar_jitter = usar_jitter
 
     def atualizar_posicao(self):
-        # posição alvo (jogador global)
         tx = jogador.rect.centerx
         ty = jogador.rect.centery
         dx = tx - self.rect.centerx
         dy = ty - self.rect.centery
-
-        # distância sem usar math.hypot (evita import extra)
         dist = (dx*dx + dy*dy) ** 0.5
         if dist == 0:
             return
 
         nx = dx / dist
         ny = dy / dist
-
-        # acelera um pouco quando perto para comportamento mais agressivo
         speed = self.velocidade + (1 if dist < 180 else 0)
 
-        # jitter opcional: pequena variação aleatória para parecer "impreciso"
         jx = random.uniform(-self.jitter, self.jitter) if self.usar_jitter else 0
         jy = random.uniform(-self.jitter, self.jitter) if self.usar_jitter else 0
 
-        # aplicar movimento (usar int/round para não acumular float no rect)
         self.rect.x += int(nx * speed + jx)
         self.rect.y += int(ny * speed + jy)
 
     def update(self):
         self.atualizar_posicao()
-        # remover se sair muito da tela
         if (self.rect.top > ALTURA + 200 or self.rect.bottom < -200 or
-                self.rect.left < -200 or self.rect.right > LARGURA + 200):
+            self.rect.left < -200 or self.rect.right > LARGURA + 200):
             self.kill()
 
 
+#BOSS
+class Boss(Robo):
+    def __init__(self, x, y):
+        super().__init__(x, y, velocidade=2)
+        self.image = pygame.Surface((120, 120))
+        self.image.fill((0, 0, 150))
+        self.rect = self.image.get_rect(center=(x, y))
+
+        self.vida = 100
+        self.mov_direcao = 1
+        self.atirar_timer = 0
+
+    def atualizar_posicao(self):
+        self.rect.x += self.mov_direcao * 3
+        if self.rect.left <= 0 or self.rect.right >= LARGURA:
+            self.mov_direcao *= -1
+
+    def atirar(self):
+        tiro = BossTiro(self.rect.centerx, self.rect.bottom)
+        todos_sprites.add(tiro)
+        tiros_chefao.add(tiro)
+
+    def update(self):
+        global estado_jogo
+
+        if estado_jogo != "BOSS":
+            return
+
+        self.atualizar_posicao()
+        self.atirar_timer += 1
+        if self.atirar_timer >= 40:
+            self.atirar()
+            self.atirar_timer = 0
+
+        if self.vida <= 0:
+            estado_jogo = "WIN"
+            self.kill()
+
+
+class BossTiro(Entidade):
+    def __init__(self, x, y):
+        super().__init__(x, y, 5)
+        self.image.fill((0, 0, 255))
+
+    def update(self):
+        self.rect.y += self.velocidade
+        if self.rect.top > ALTURA:
+            self.kill()
+
+
+# POWERUPS
 class PowerUp(RoboZigueZague):
     def __init__(self, x, y, tipo):
         super().__init__(x, y)
 
         self.tipo = tipo
+        self.velocidade = 6
 
         if tipo == "vida":
-            self.image.fill((0, 0, 255)) #azul
-            self.velocidade = 6
-
+            self.image.fill((0, 0, 255))
         elif tipo == "velocidade":
-            self.image.fill((163, 73, 14)) #roxo
-            self.velocidade = 6
-
+            self.image.fill((163, 73, 14))
         elif tipo == "tirotriplo":
-            self.image.fill((255,141,161)) #rosa
-            self.velocidade = 6
-            
+            self.image.fill((255, 141, 161))
+
+
+# GRUPOS
 todos_sprites = pygame.sprite.Group()
 inimigos = pygame.sprite.Group()
 tiros = pygame.sprite.Group()
 powerups = pygame.sprite.Group()
+tiros_chefao = pygame.sprite.Group()
 
 jogador = Jogador(LARGURA // 2, ALTURA - 60)
 todos_sprites.add(jogador)
 
+chefao = None
 pontos = 0
 spawn_timer = 0
 tempo_velocidade = 0
 tempo_tirotriplo = 0
+
 rodando = True
 while rodando:
     clock.tick(FPS)
@@ -180,90 +230,132 @@ while rodando:
         if event.type == pygame.QUIT:
             rodando = False
 
+        # TIRO DO JOGADOR
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
-            
-                if tempo_tirotriplo> 0:
-                
-                    # tiro central
-                    tiro = Tiro(jogador.rect.centerx, jogador.rect.y)
-                    todos_sprites.add(tiro)
-                    tiros.add(tiro)
-
-                    # tiro diagonal esquerda
-                    t_esq = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
-                    todos_sprites.add(t_esq)
-                    tiros.add(t_esq)
-
-                    # tiro diagonal direita
-                    t_dir = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
-                    todos_sprites.add(t_dir)
-                    tiros.add(t_dir)
-
+                if tempo_tirotriplo > 0:
+                    t1 = Tiro(jogador.rect.centerx, jogador.rect.y)
+                    t2 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
+                    t3 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
+                    for t in (t1, t2, t3):
+                        todos_sprites.add(t)
+                        tiros.add(t)
                 else:
-                    tiro = Tiro(jogador.rect.centerx, jogador.rect.y)
-                    todos_sprites.add(tiro)
-                    tiros.add(tiro)
+                    t = Tiro(jogador.rect.centerx, jogador.rect.y)
+                    todos_sprites.add(t)
+                    tiros.add(t)
 
-    # timer de entrada dos inimigos
-    spawn_timer += 1
-    if spawn_timer > 40:
-        if random.random() < 0.15:
-            robo = RoboCacador(random.randint(40, LARGURA - 40), -40, velocidade=2)
-        else:
-            robo = RoboZigueZague(random.randint(40, LARGURA - 40), -40)
-        todos_sprites.add(robo)
-        inimigos.add(robo)
-        spawn_timer = 0
-    if random.random() < 0.005:  # 0.5% de chance por frame (~1 a cada 8–10s)
-        tipo = random.choice(["vida", "velocidade", "tirotriplo"])
-        robo = PowerUp(random.randint(40, LARGURA - 40), -40, tipo)
-        todos_sprites.add(robo)
-        powerups.add(robo)
+        # REINICIAR APÓS VITÓRIA
+        if estado_jogo == "WIN":
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
 
-    #colisão dos power ups
-    colisao_pu = pygame.sprite.spritecollide(jogador, powerups, True)
+                pontos = 0
+                jogador.vida = 5
+                jogador.rect.center = (LARGURA // 2, ALTURA - 60)
 
-    for p in colisao_pu:
+                # limpar tudo menos o jogador
+                for grp in (inimigos, tiros, powerups, tiros_chefao, todos_sprites):
+                    for s in grp.copy():
+                        if not isinstance(s, Jogador):
+                            s.kill()
+
+                chefao = None
+                estado_jogo = "NORMAL"
+
+    #Lógica da chegada do CHEFÃO
+    if pontos >= 50 and estado_jogo == "NORMAL":
+        estado_jogo = "BOSS_INCOMING"
+        aviso_timer = FPS * 2 
+
+    if estado_jogo == "BOSS_INCOMING":
+        aviso_timer -= 1
+        if aviso_timer <= 0:
+            estado_jogo = "BOSS"
+            chefao = Boss(LARGURA // 2, 120)
+            todos_sprites.add(chefao)
+
+    # Spawn de inimigos APENAS no modo NORMAL
+    if estado_jogo == "NORMAL":
+        spawn_timer += 1
+        if spawn_timer > 40:
+            if random.random() < 0.15:
+                robo = RoboCacador(random.randint(40, LARGURA - 40), -40, velocidade=2)
+            else:
+                robo = RoboZigueZague(random.randint(40, LARGURA - 40), -40)
+            todos_sprites.add(robo)
+            inimigos.add(robo)
+            spawn_timer = 0
+
+        if random.random() < 0.005:
+            tipo = random.choice(["vida", "velocidade", "tirotriplo"])
+            r = PowerUp(random.randint(40, LARGURA - 40), -40, tipo)
+            todos_sprites.add(r)
+            powerups.add(r)
+
+    # colisão powerup
+    for p in pygame.sprite.spritecollide(jogador, powerups, True):
         if p.tipo == "vida":
             jogador.vida += 1
-
         elif p.tipo == "velocidade":
             jogador.velocidade = 10
             tempo_velocidade = FPS * 5
-
         elif p.tipo == "tirotriplo":
             tempo_tirotriplo = FPS * 5
-            
-    # colisão tiro x robô
-    colisao = pygame.sprite.groupcollide(inimigos, tiros, True, True)
-    pontos += len(colisao)
 
-    # colisão robô x jogador
+    hits = pygame.sprite.groupcollide(inimigos, tiros, True, True)
+    pontos += len(hits)
+
+    if chefao:
+        tiros_acertaram = pygame.sprite.spritecollide(chefao, tiros, True)
+        chefao.vida -= len(tiros_acertaram)
+
+    if pygame.sprite.spritecollide(jogador, tiros_chefao, True):
+        jogador.vida -= 1
+        if jogador.vida <= 0:
+            print("GAME OVER")
+            rodando = False
+
     if pygame.sprite.spritecollide(jogador, inimigos, True):
         jogador.vida -= 1
         if jogador.vida <= 0:
-            print("GAME OVER!")
+            print("GAME OVER")
             rodando = False
+
     if tempo_velocidade > 0:
         tempo_velocidade -= 1
         if tempo_velocidade == 0:
             jogador.velocidade = 5
+
     if tempo_tirotriplo > 0:
         tempo_tirotriplo -= 1
-    # atualizar
-    todos_sprites.update()
 
-    # desenhar
+    todos_sprites.update()
+    tiros_chefao.update()
+
+    # DESENHO
     TELA.fill((20, 20, 20))
     todos_sprites.draw(TELA)
 
-    #Painel de pontos e vida
     font = pygame.font.SysFont(None, 30)
-    texto = font.render(f"Vida: {jogador.vida}  |  Pontos: {pontos}", True, (255, 255, 255))
+    texto = font.render(f"Vida: {jogador.vida} | Pontos: {pontos}", True, (255, 255, 255))
     TELA.blit(texto, (10, 10))
 
-    pygame.display.flip()
+    # HUD do chefe
+    if estado_jogo == "BOSS" and chefao:
+        vida_pct = max(0, chefao.vida) / 100
+        HUD_LARGURA = 300
+        HUD_X = (LARGURA - HUD_LARGURA) // 2
+        pygame.draw.rect(TELA, (60, 0, 0), (HUD_X, 20, HUD_LARGURA, 12))
+        pygame.draw.rect(TELA, (0, 255, 0), (HUD_X, 20, int(HUD_LARGURA * vida_pct), 12))
 
+    if estado_jogo == "BOSS_INCOMING":
+        text = font.render("CHEFÃO SE APROXIMANDO!", True, (255, 0, 0))
+        TELA.blit(text, (LARGURA // 2 - 150, ALTURA // 2))
+
+    if estado_jogo == "WIN":
+        win_text = font.render("VOCÊ VENCEU! PRESSIONE ENTER PARA REINICIAR", True, (255, 255, 0))
+        TELA.blit(win_text, (100, ALTURA // 2))
+
+    pygame.display.flip()
 
 pygame.quit()
