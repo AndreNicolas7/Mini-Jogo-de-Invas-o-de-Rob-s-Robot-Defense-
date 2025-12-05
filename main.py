@@ -1,6 +1,7 @@
 import pygame
 import random
-import math
+import math 
+import os
 
 pygame.init()
 
@@ -12,16 +13,71 @@ pygame.display.set_caption("Robot Defense - Template")
 FPS = 60
 clock = pygame.time.Clock()
 
-# ======== ESTADO DO JOGO ========
-estado_jogo = "NORMAL"   # NORMAL → BOSS_INCOMING → BOSS → WIN
+# FUNÇÃO DE CARREGAMENTO DE SPRITE E DIMENSÕES AJUSTADAS
+def carregar_sprite(nome_arquivo, cor_fallback=(0, 0, 0), largura=40, altura=40):
+    
+    # TAMANHOS DE SPRITE AJUSTADOS
+    if 'power_' in nome_arquivo:
+        largura, altura = 40, 40 
+    elif nome_arquivo == 'jogador.png':
+        largura, altura = 60, 60 
+    elif nome_arquivo == 'tiro.png':
+        largura, altura = 12, 24 
+    elif nome_arquivo == 'boss.png':
+        largura, altura = 150, 150 
+    elif nome_arquivo == 'boss_tiro.png':
+        largura, altura = 25, 35 
+    else: # Todos os robôs inimigos 
+        largura, altura = 50, 50 
+    
+    # Define o caminho completo
+    caminho_completo = 'sprites/' + nome_arquivo 
+    
+    try:
+        imagem = pygame.image.load(caminho_completo).convert_alpha()
+        imagem = pygame.transform.scale(imagem, (largura, altura))
+        return imagem
+    except (pygame.error, FileNotFoundError):
+        print(f"ATENÇÃO: Não foi possível carregar a sprite {caminho_completo}. Gerando quadrado.")
+        surface = pygame.Surface((largura, altura))
+        if 'robo_ciclico' in nome_arquivo:
+            cor_fallback = (255, 0, 100)
+        elif 'robo_saltador' in nome_arquivo:
+            cor_fallback = (150, 0, 150)
+        
+        surface.fill(cor_fallback)
+        surface.set_colorkey((0,0,0)) 
+        return surface.convert_alpha()
+
+# CARREGAMENTO GLOBAL DE SPRITES
+sprites = {
+    'jogador': carregar_sprite('jogador.png', cor_fallback=(0, 255, 0)),
+    'tiro': carregar_sprite('tiro.png', cor_fallback=(255, 255, 0)), 
+    'robo_zigue': carregar_sprite('robo_zigue.png', cor_fallback=(255, 0, 0)),
+    'robo_cacador': carregar_sprite('robo_cacador.png', cor_fallback=(255, 100, 0)),
+    'robo_lento': carregar_sprite('robo_lento.png', cor_fallback=(100, 0, 255)), 
+    'robo_rapido': carregar_sprite('robo_rapido.png', cor_fallback=(0, 100, 255)), 
+    # Cores personalizadas para fallback
+    'robo_ciclico': carregar_sprite('robo_ciclico.png', cor_fallback=(255, 0, 100)),
+    'robo_saltador': carregar_sprite('robo_saltador.png', cor_fallback=(150, 0, 150)), 
+    
+    'power_vida': carregar_sprite('power_vida.png', cor_fallback=(0, 0, 255)),
+    'power_velocidade': carregar_sprite('power_velocidade.png', cor_fallback=(163, 73, 14)),
+    'power_tirotriplo': carregar_sprite('power_tirotriplo.png', cor_fallback=(255, 141, 161)),
+    'boss': carregar_sprite('boss.png', cor_fallback=(0, 0, 150)), 
+    'boss_tiro': carregar_sprite('boss_tiro.png', cor_fallback=(0, 0, 255)), 
+}
+
+# ESTADO DO JOGO
+estado_jogo = "NORMAL"  
 
 
 # CLASSE BASE
 class Entidade(pygame.sprite.Sprite):
-    def __init__(self, x, y, velocidade):
+    def __init__(self, x, y, velocidade, image_key):
         super().__init__()
         self.velocidade = velocidade
-        self.image = pygame.Surface((40, 40))
+        self.image = sprites[image_key] 
         self.rect = self.image.get_rect(center=(x, y))
 
     def mover(self, dx, dy):
@@ -32,8 +88,7 @@ class Entidade(pygame.sprite.Sprite):
 # JOGADOR
 class Jogador(Entidade):
     def __init__(self, x, y):
-        super().__init__(x, y, 5)
-        self.image.fill((0, 255, 0))  # verde
+        super().__init__(x, y, 5, 'jogador') 
         self.vida = 5
 
     def update(self):
@@ -48,15 +103,14 @@ class Jogador(Entidade):
         if keys[pygame.K_d]:
             self.mover(self.velocidade, 0)
 
-        self.rect.x = max(0, min(self.rect.x, LARGURA - 40))
-        self.rect.y = max(0, min(self.rect.y, ALTURA - 40))
+        self.rect.x = max(0, min(self.rect.x, LARGURA - self.rect.width)) 
+        self.rect.y = max(0, min(self.rect.y, ALTURA - self.rect.height)) 
 
 
 # TIRO (DO JOGADOR)
 class Tiro(Entidade):
     def __init__(self, x, y):
-        super().__init__(x, y, 10)
-        self.image.fill((255, 255, 0))  # amarelo
+        super().__init__(x, y, 10, 'tiro') 
 
     def update(self):
         self.rect.y -= self.velocidade
@@ -66,7 +120,7 @@ class Tiro(Entidade):
 
 class TiroDiagonal(Tiro):
     def __init__(self, x, y, direcao_x):
-        super().__init__(x, y)
+        super().__init__(x, y) 
         self.direcao_x = direcao_x
         self.velocidade_x = 4
 
@@ -80,9 +134,8 @@ class TiroDiagonal(Tiro):
 
 # ROBO BASE
 class Robo(Entidade):
-    def __init__(self, x, y, velocidade):
-        super().__init__(x, y, velocidade)
-        self.image.fill((255, 0, 0))  # vermelho
+    def __init__(self, x, y, velocidade, image_key):
+        super().__init__(x, y, velocidade, image_key) 
 
     def atualizar_posicao(self):
         raise NotImplementedError
@@ -91,14 +144,14 @@ class Robo(Entidade):
 # ROBO ZigueZague
 class RoboZigueZague(Robo):
     def __init__(self, x, y):
-        super().__init__(x, y, velocidade=3)
+        super().__init__(x, y, velocidade=2, image_key='robo_zigue')
         self.direcao = 1
 
     def atualizar_posicao(self):
         self.rect.y += self.velocidade
         self.rect.x += self.direcao * 3
 
-        if self.rect.x <= 0 or self.rect.x >= LARGURA - 40:
+        if self.rect.x <= 0 or self.rect.x >= LARGURA - self.rect.width: 
             self.direcao *= -1
 
     def update(self):
@@ -106,12 +159,27 @@ class RoboZigueZague(Robo):
         if self.rect.y > ALTURA:
             self.kill()
 
+# Variações do Robo ZigueZague
+class RoboCiclico(RoboZigueZague): 
+    def __init__(self, x, y):
+        super(RoboZigueZague, self).__init__(x, y, velocidade=2, image_key='robo_ciclico') 
+        self.direcao = 1
+
+class RoboLento(RoboZigueZague): 
+    def __init__(self, x, y):
+        super(RoboZigueZague, self).__init__(x, y, velocidade=1, image_key='robo_lento') 
+        self.direcao = 1
+
+class RoboRapido(RoboZigueZague): 
+    def __init__(self, x, y):
+        super(RoboZigueZague, self).__init__(x, y, velocidade=4, image_key='robo_rapido') 
+        self.direcao = 1
+
 
 # ROBO Caçador
 class RoboCacador(Robo):
-    def __init__(self, x, y, velocidade=3, jitter=0.6, usar_jitter=True):
-        super().__init__(x, y, velocidade)
-        self.image.fill((255, 100, 0))  # laranja
+    def __init__(self, x, y, velocidade=2, jitter=0.6, usar_jitter=True):
+        super().__init__(x, y, velocidade, image_key='robo_cacador') 
         self.jitter = jitter
         self.usar_jitter = usar_jitter
 
@@ -141,25 +209,25 @@ class RoboCacador(Robo):
             self.kill()
 
 
+# ROBO CIRCULAR
 class RoboCircular(Robo):
-    def __init__(self, x, y, raio, v_descida,v_angular):
-        super().__init__(x, y, velocidade=3)
+    def __init__(self, x, y, raio, v_descida, v_angular):
+        super().__init__(x, y, velocidade=1, image_key='robo_ciclico') 
         self.center_x = x
         self.center_y = y
         self.raio = raio
         self.v_descida = v_descida
         self.v_angular = v_angular
         self.angulo = 0
-        self.direcao = random.choice([1, -1])
-        self.trocar_timer = random.randint(30, 80)
-
 
     def atualizar_posicao(self):
-        self.angulo += self.v_angular * self.direcao
+        self.angulo += self.v_angular
         if self.angulo > 360:
             self.angulo -= 360
         angulo_rad = math.radians(self.angulo)
+        
         self.center_y += self.v_descida
+        
         self.rect.x = int(self.center_x + self.raio * math.cos(angulo_rad))
         self.rect.y = int(self.center_y + self.raio * math.sin(angulo_rad))
 
@@ -168,23 +236,25 @@ class RoboCircular(Robo):
         if self.rect.y > ALTURA:
             self.kill()
 
+
 class RoboPulante(Robo):
     def __init__(self, x, y):
-        super().__init__(x, y, velocidade=2)
-        self.image.fill((150, 0, 150))
-
-        self.cooldown_pulo = random.randint(20, 50)
+        super().__init__(x, y, velocidade=2, image_key='robo_saltador')
+        
+        self.cooldown_pulo = random.randint(40, 80) 
         self.timer = 0
-        self.forca_pulo = random.randint(40, 80)
+        self.forca_pulo = random.randint(-80, -40)
 
     def atualizar_posicao(self):
-        self.rect.y += self.velocidade
+        # Descida contínua
+        self.rect.y += self.velocidade 
         self.timer += 1
 
+        # Lógica de pulo
         if self.timer >= self.cooldown_pulo:
             self.rect.y += self.forca_pulo
             self.timer = 0
-            self.cooldown_pulo = random.randint(20, 50)
+            self.cooldown_pulo = random.randint(40, 80)
 
     def update(self):
         self.atualizar_posicao()
@@ -194,10 +264,7 @@ class RoboPulante(Robo):
 #BOSS
 class Boss(Robo):
     def __init__(self, x, y):
-        super().__init__(x, y, velocidade=2)
-        self.image = pygame.Surface((120, 120))
-        self.image.fill((0, 0, 150))
-        self.rect = self.image.get_rect(center=(x, y))
+        super().__init__(x, y, velocidade=2, image_key='boss') 
 
         self.vida = 100
         self.mov_direcao = 1
@@ -232,8 +299,7 @@ class Boss(Robo):
 
 class BossTiro(Entidade):
     def __init__(self, x, y):
-        super().__init__(x, y, 5)
-        self.image.fill((0, 0, 255))
+        super().__init__(x, y, 5, 'boss_tiro') 
 
     def update(self):
         self.rect.y += self.velocidade
@@ -244,17 +310,18 @@ class BossTiro(Entidade):
 # POWERUPS
 class PowerUp(RoboZigueZague):
     def __init__(self, x, y, tipo):
-        super().__init__(x, y)
+        
+        sprite_map = {
+            "vida": 'power_vida',
+            "velocidade": 'power_velocidade',
+            "tirotriplo": 'power_tirotriplo',
+        }
+
+        super(RoboZigueZague, self).__init__(x, y, velocidade=3, image_key=sprite_map[tipo]) 
 
         self.tipo = tipo
-        self.velocidade = 6
-
-        if tipo == "vida":
-            self.image.fill((0, 0, 255))
-        elif tipo == "velocidade":
-            self.image.fill((163, 73, 14))
-        elif tipo == "tirotriplo":
-            self.image.fill((255, 141, 161))
+        self.velocidade = 3
+        self.direcao = 1 
 
 
 # GRUPOS
@@ -282,19 +349,19 @@ while rodando:
     keys = pygame.key.get_pressed()
     delay_tiro += 0.2
     if delay_tiro >= 4:
-                if keys[pygame.K_SPACE]:
-                    if tempo_tirotriplo > 0:
-                        t1 = Tiro(jogador.rect.centerx, jogador.rect.y)
-                        t2 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
-                        t3 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
-                        for t in (t1, t2, t3):
-                            todos_sprites.add(t)
-                            tiros.add(t)
-                    else:
-                        t = Tiro(jogador.rect.centerx, jogador.rect.y)
-                        todos_sprites.add(t)
-                        tiros.add(t)
-                delay_tiro = 0
+        if keys[pygame.K_SPACE]:
+            if tempo_tirotriplo > 0:
+                t1 = Tiro(jogador.rect.centerx, jogador.rect.y)
+                t2 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
+                t3 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
+                for t in (t1, t2, t3):
+                    todos_sprites.add(t)
+                    tiros.add(t)
+            else:
+                t = Tiro(jogador.rect.centerx, jogador.rect.y)
+                todos_sprites.add(t)
+                tiros.add(t)
+            delay_tiro = 0
                 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -332,15 +399,29 @@ while rodando:
     # Spawn de inimigos APENAS no modo NORMAL
     if estado_jogo == "NORMAL":
         spawn_timer += 1
-        if spawn_timer > 40:
-            if random.random() < 0.15:
-                robo = RoboCacador(random.randint(40, LARGURA - 40), -40, velocidade=2)
-            elif random.random() < 0.3:
-                robo = RoboCircular(x=random.randint(40, LARGURA - 40),y=-40,raio=random.randint(20, 60),v_descida=2,v_angular=random.uniform(3, 6))
-            elif random.random() < 0.45:
-                robo = RoboPulante(random.randint(40, LARGURA - 40), -40)
+        if spawn_timer > 60: 
+            rand = random.random()
+            x_pos = random.randint(50, LARGURA - 50) 
+            
+            if rand < 0.15:
+                robo = RoboCacador(x_pos, -50)
+            elif rand < 0.30:
+                robo = RoboCircular(
+                    x=x_pos, 
+                    y=-50,
+                    raio=random.randint(20, 60),
+                    v_descida=1, 
+                    v_angular=random.uniform(3, 6)
+                )
+            elif rand < 0.45:
+                robo = RoboPulante(x_pos, -50)
+            elif rand < 0.60:
+                robo = RoboRapido(x_pos, -50) 
+            elif rand < 0.75:
+                robo = RoboLento(x_pos, -50)
             else:
-                robo = RoboZigueZague(random.randint(40, LARGURA - 40), -40)
+                robo = RoboZigueZague(x_pos, -50) 
+
             todos_sprites.add(robo)
             inimigos.add(robo)
             spawn_timer = 0
