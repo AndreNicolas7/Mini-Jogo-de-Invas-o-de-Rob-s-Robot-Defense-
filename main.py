@@ -1,10 +1,16 @@
+# main.py — jogo completo com intro em vídeo (OpenCV) e fundo restaurado
 import pygame
 import random
-import math 
+import math
 import os
+import cv2
+import numpy as np
 
 pygame.init()
 
+# -----------------------
+# CONFIGURAÇÕES BÁSICAS
+# -----------------------
 LARGURA = 800
 ALTURA = 600
 TELA = pygame.display.set_mode((LARGURA, ALTURA))
@@ -13,85 +19,136 @@ pygame.display.set_caption("Robot Defense - Template")
 FPS = 60
 clock = pygame.time.Clock()
 
-# FUNÇÃO DE CARREGAMENTO DE SPRITE E DIMENSÕES AJUSTADAS
+SPRITES_DIR = 'sprites/'
+
+# -----------------------
+# FUNÇÃO PARA TOCAR VÍDEO (OpenCV)
+# -----------------------
+def tocar_video_intro(caminho_video):
+    """Reproduz vídeo usando OpenCV e permite pular com qualquer tecla."""
+    if not os.path.exists(caminho_video):
+        print(f"Intro: arquivo {caminho_video} não encontrado, pulando intro.")
+        return
+
+    cap = cv2.VideoCapture(caminho_video)
+    if not cap.isOpened():
+        print("Erro ao abrir o vídeo.")
+        return
+
+    fps_video = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps_video = max(15.0, float(fps_video))
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Converte BGR -> RGB e redimensiona
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame = cv2.resize(frame, (LARGURA, ALTURA), interpolation=cv2.INTER_LINEAR)
+
+        # Cria surface diretamente (sem rotacionar)
+        surface = pygame.image.frombuffer(frame.tobytes(), (LARGURA, ALTURA), 'RGB')
+
+        TELA.blit(surface, (0, 0))
+        pygame.display.flip()
+
+        # Eventos: pular com qualquer tecla ou fechar
+        for event in pygame.event.get():
+            if event.type == pygame.KEYDOWN or event.type == pygame.QUIT:
+                cap.release()
+                return
+
+        clock.tick(int(fps_video))
+
+    cap.release()
+
+# chama a intro (arquivo deve estar na mesma pasta)
+tocar_video_intro("lv_0_20251208094527.mp4")
+
+
+# -----------------------
+# CARREGAMENTO DO FUNDO
+# -----------------------
+def carregar_fundo(caminho):
+    try:
+        img = pygame.image.load(caminho).convert()
+        return pygame.transform.scale(img, (LARGURA, ALTURA))
+    except Exception:
+        print(f"Não foi possível carregar fundo {caminho}, usando fallback colorido.")
+        s = pygame.Surface((LARGURA, ALTURA))
+        s.fill((20, 20, 20))
+        return s
+
+# caminho padrão: sprites/fundo.png
+fundo = carregar_fundo(os.path.join(SPRITES_DIR, 'fundo.png'))
+
+
+# -----------------------
+# FUNÇÃO DE CARREGAMENTO DE SPRITES
+# -----------------------
 def carregar_sprite(nome_arquivo, cor_fallback=(0, 0, 0), largura=40, altura=40):
-    
-    # TAMANHOS DE SPRITE AJUSTADOS
     if 'power_' in nome_arquivo:
-        largura, altura = 40, 40 
+        largura, altura = 40, 40
     elif nome_arquivo == 'jogador.png':
-        largura, altura = 60, 60 
+        largura, altura = 60, 60
     elif nome_arquivo == 'tiro.png':
-        largura, altura = 12, 24 
+        largura, altura = 12, 24
     elif nome_arquivo == 'boss.png':
-        largura, altura = 150, 150 
+        largura, altura = 150, 150
     elif nome_arquivo == 'boss_tiro.png':
-        largura, altura = 25, 35 
-    else: # Todos os robôs inimigos 
-        largura, altura = 50, 50 
-    
-    # Define o caminho completo
-    caminho_completo = 'sprites/' + nome_arquivo 
-    
+        largura, altura = 25, 35
+    else:
+        largura, altura = 50, 50
+
+    caminho_completo = os.path.join(SPRITES_DIR, nome_arquivo)
     try:
         imagem = pygame.image.load(caminho_completo).convert_alpha()
         imagem = pygame.transform.scale(imagem, (largura, altura))
         return imagem
     except (pygame.error, FileNotFoundError):
-        print(f"ATENÇÃO: Não foi possível carregar a sprite {caminho_completo}. Gerando quadrado.")
-        surface = pygame.Surface((largura, altura))
-        if 'robo_ciclico' in nome_arquivo:
-            cor_fallback = (255, 0, 100)
-        elif 'robo_saltador' in nome_arquivo:
-            cor_fallback = (150, 0, 150)
-        
+        print(f"ATENÇÃO: Não foi possível carregar a sprite {caminho_completo}. Gerando fallback.")
+        surface = pygame.Surface((largura, altura)).convert_alpha()
         surface.fill(cor_fallback)
-        surface.set_colorkey((0,0,0)) 
-        return surface.convert_alpha()
+        return surface
 
-# CARREGAMENTO GLOBAL DE SPRITES
+
+# -----------------------
+# SPRITES PRINCIPAIS
+# -----------------------
 sprites = {
     'jogador': carregar_sprite('jogador.png', cor_fallback=(0, 255, 0)),
-    'tiro': carregar_sprite('tiro.png', cor_fallback=(255, 255, 0)), 
+    'tiro': carregar_sprite('tiro.png', cor_fallback=(255, 255, 0)),
     'robo_zigue': carregar_sprite('robo_zigue.png', cor_fallback=(255, 0, 0)),
     'robo_cacador': carregar_sprite('robo_cacador.png', cor_fallback=(255, 100, 0)),
-    'robo_lento': carregar_sprite('robo_lento.png', cor_fallback=(100, 0, 255)), 
-    'robo_rapido': carregar_sprite('robo_rapido.png', cor_fallback=(0, 100, 255)), 
-    # Cores personalizadas para fallback
+    'robo_lento': carregar_sprite('robo_lento.png', cor_fallback=(100, 0, 255)),
+    'robo_rapido': carregar_sprite('robo_rapido.png', cor_fallback=(0, 100, 255)),
     'robo_ciclico': carregar_sprite('robo_ciclico.png', cor_fallback=(255, 0, 100)),
-    'robo_saltador': carregar_sprite('robo_saltador.png', cor_fallback=(150, 0, 150)), 
-    
+    'robo_saltador': carregar_sprite('robo_saltador.png', cor_fallback=(150, 0, 150)),
     'power_vida': carregar_sprite('power_vida.png', cor_fallback=(0, 0, 255)),
     'power_velocidade': carregar_sprite('power_velocidade.png', cor_fallback=(163, 73, 14)),
     'power_tirotriplo': carregar_sprite('power_tirotriplo.png', cor_fallback=(255, 141, 161)),
-    'boss': carregar_sprite('boss.png', cor_fallback=(0, 0, 150)), 
+    'boss': carregar_sprite('boss.png', cor_fallback=(0, 0, 150)),
     'boss_tiro': carregar_sprite('boss_tiro.png', cor_fallback=(0, 0, 255)),
-     'explosao' : carregar_sprite('tentativa.png', cor_fallback=(255, 255, 255), largura=274, altura=384),
+    'explosao': carregar_sprite('tentativa.png', cor_fallback=(255, 255, 255), largura=274, altura=384),
 }
 
-# ESTADO DO JOGO
-estado_jogo = "NORMAL"
 
-explosao = sprites['explosao'].convert_alpha()
-
+# -----------------------
+# ANIMAÇÃO DE EXPLOSÃO
+# -----------------------
 explosao_frames = []
-cols = 1
-rows = 1
-frame_width = explosao.get_width() // cols
-frame_height = explosao.get_height() // rows
-
+sheet = sprites['explosao']
+cols, rows = 1, 1
+fw = sheet.get_width() // cols
+fh = sheet.get_height() // rows
 for i in range(rows):
     for j in range(cols):
-        frame = explosao.subsurface(
-            (j * frame_width, i * frame_height, frame_width, frame_height)
-        )
-
-        # OPCIONAL: aumentar no jogo para ficar mais impactante
+        frame = sheet.subsurface((j * fw, i * fh, fw, fh))
         frame = pygame.transform.scale(frame, (80, 80))
-
         explosao_frames.append(frame)
 
-# CLASSE EXPLOSÃO
+
 class Explosao(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
@@ -99,80 +156,71 @@ class Explosao(pygame.sprite.Sprite):
         self.frame_index = 0
         self.image = self.frames[self.frame_index]
         self.rect = self.image.get_rect(center=(x, y))
-        self.contador = 0
+        self.counter = 0
 
     def update(self):
-        self.contador += 1
-        if self.contador >= 15:  # tempo entre quadros
-            self.contador = 0
+        self.counter += 1
+        if self.counter >= 15:
+            self.counter = 0
             self.frame_index += 1
             if self.frame_index >= len(self.frames):
-                
-                self.kill()  # explosão acaba
+                self.kill()
             else:
                 self.image = self.frames[self.frame_index]
 
-# CLASSE BASE
+
+# -----------------------
+# CLASSES DO JOGO
+# -----------------------
 class Entidade(pygame.sprite.Sprite):
     def __init__(self, x, y, velocidade, image_key):
         super().__init__()
         self.velocidade = velocidade
-        self.image = sprites[image_key] 
+        self.image = sprites[image_key]
         self.rect = self.image.get_rect(center=(x, y))
 
-    def mover(self, dx, dy):
-        self.rect.x += dx
-        self.rect.y += dy
 
-
-# JOGADOR
 class Jogador(Entidade):
     def __init__(self, x, y):
-        super().__init__(x, y, 5, 'jogador') 
+        super().__init__(x, y, 5, 'jogador')
         self.vida = 5
         self.transformado = False
         self.tamanho_original = (60, 60)
         self.velocidade_original = 5
-        self.cacador_desabilitado = False  # Controla se caçador pode aparecer
+        self.cacador_desabilitado = False
 
     def ativar_transformacao(self):
-        """Ativa o modo transformado (Easter Egg do Caçador)"""
         self.transformado = True
-        # Aumenta o tamanho um pouco
         novo_tamanho = (int(60 * 1.3), int(60 * 1.3))
         self.image = pygame.transform.scale(sprites['jogador'], novo_tamanho)
         self.rect = self.image.get_rect(center=self.rect.center)
-        # Aumenta velocidade (balanceado)
         self.velocidade = 6.5
 
     def desativar_transformacao(self):
-        """Desativa o modo transformado"""
         self.transformado = False
         self.image = pygame.transform.scale(sprites['jogador'], self.tamanho_original)
         self.rect = self.image.get_rect(center=self.rect.center)
         self.velocidade = self.velocidade_original
-        self.cacador_desabilitado = True  # Caçador não spawna mais após transformação
+        self.cacador_desabilitado = True
 
     def update(self):
         keys = pygame.key.get_pressed()
-
         if keys[pygame.K_w]:
-            self.mover(0, -self.velocidade)
+            self.rect.y -= self.velocidade
         if keys[pygame.K_s]:
-            self.mover(0, self.velocidade)
+            self.rect.y += self.velocidade
         if keys[pygame.K_a]:
-            self.mover(-self.velocidade, 0)
+            self.rect.x -= self.velocidade
         if keys[pygame.K_d]:
-            self.mover(self.velocidade, 0)
+            self.rect.x += self.velocidade
 
-        self.rect.x = max(0, min(self.rect.x, LARGURA - self.rect.width)) 
-        self.rect.y = max(0, min(self.rect.y, ALTURA - self.rect.height)) 
+        self.rect.x = max(0, min(self.rect.x, LARGURA - self.rect.width))
+        self.rect.y = max(0, min(self.rect.y, ALTURA - self.rect.height))
 
 
-# TIRO (DO JOGADOR)
 class Tiro(Entidade):
     def __init__(self, x, y):
-        super().__init__(x, y, 10, 'tiro') 
+        super().__init__(x, y, 10, 'tiro')
 
     def update(self):
         self.rect.y -= self.velocidade
@@ -182,28 +230,23 @@ class Tiro(Entidade):
 
 class TiroDiagonal(Tiro):
     def __init__(self, x, y, direcao_x):
-        super().__init__(x, y) 
+        super().__init__(x, y)
         self.direcao_x = direcao_x
         self.velocidade_x = 4
 
     def update(self):
         self.rect.y -= self.velocidade
         self.rect.x += self.direcao_x * self.velocidade_x
-
         if self.rect.y < 0 or self.rect.x < 0 or self.rect.x > LARGURA:
             self.kill()
 
 
-# ROBO BASE
+# ----- Robôs -----
 class Robo(Entidade):
-    def __init__(self, x, y, velocidade, image_key):
-        super().__init__(x, y, velocidade, image_key) 
-
     def atualizar_posicao(self):
         raise NotImplementedError
 
 
-# ROBO ZigueZague
 class RoboZigueZague(Robo):
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=2, image_key='robo_zigue')
@@ -213,8 +256,7 @@ class RoboZigueZague(Robo):
     def atualizar_posicao(self):
         self.rect.y += self.velocidade
         self.rect.x += self.direcao * 3
-
-        if self.rect.x <= 0 or self.rect.x >= LARGURA - self.rect.width: 
+        if self.rect.x <= 0 or self.rect.x >= LARGURA - self.rect.width:
             self.direcao *= -1
 
     def update(self):
@@ -222,29 +264,31 @@ class RoboZigueZague(Robo):
         if self.rect.y > ALTURA:
             self.kill()
 
-# Variações do Robo ZigueZague
-class RoboCiclico(RoboZigueZague): 
+
+class RoboCiclico(RoboZigueZague):
     def __init__(self, x, y):
-        super(RoboZigueZague, self).__init__(x, y, velocidade=2, image_key='robo_ciclico') 
-        self.direcao = 1
+        super().__init__(x, y)
+        self.image = sprites['robo_ciclico']
         self.vida = 1
 
-class RoboLento(RoboZigueZague): 
+
+class RoboLento(RoboZigueZague):
     def __init__(self, x, y):
-        super(RoboZigueZague, self).__init__(x, y, velocidade=1, image_key='robo_lento') 
-        self.direcao = 1
+        super().__init__(x, y)
+        self.image = sprites['robo_lento']
         self.vida = 1
 
-class RoboRapido(RoboZigueZague): 
-    def __init__(self, x, y):
-        super(RoboZigueZague, self).__init__(x, y, velocidade=4, image_key='robo_rapido') 
-        self.direcao = 1
-        self.vida = 1 
 
-# ROBO Caçador
+class RoboRapido(RoboZigueZague):
+    def __init__(self, x, y):
+        super().__init__(x, y)
+        self.image = sprites['robo_rapido']
+        self.vida = 1
+
+
 class RoboCacador(Robo):
     def __init__(self, x, y, velocidade=2, jitter=0.6, usar_jitter=True):
-        super().__init__(x, y, velocidade, image_key='robo_cacador') 
+        super().__init__(x, y, velocidade, image_key='robo_cacador')
         self.jitter = jitter
         self.usar_jitter = usar_jitter
         self.easter_egg = False
@@ -255,7 +299,7 @@ class RoboCacador(Robo):
         ty = jogador.rect.centery
         dx = tx - self.rect.centerx
         dy = ty - self.rect.centery
-        dist = (dx*dx + dy*dy) ** 0.5
+        dist = math.hypot(dx, dy)
         if dist == 0:
             return
 
@@ -272,14 +316,13 @@ class RoboCacador(Robo):
     def update(self):
         self.atualizar_posicao()
         if (self.rect.top > ALTURA + 200 or self.rect.bottom < -200 or
-            self.rect.left < -200 or self.rect.right > LARGURA + 200):
+                self.rect.left < -200 or self.rect.right > LARGURA + 200):
             self.kill()
 
 
-# ROBO CIRCULAR
 class RoboCircular(Robo):
     def __init__(self, x, y, raio, v_descida, v_angular):
-        super().__init__(x, y, velocidade=1, image_key='robo_ciclico') 
+        super().__init__(x, y, velocidade=1, image_key='robo_ciclico')
         self.center_x = x
         self.center_y = y
         self.raio = raio
@@ -293,9 +336,7 @@ class RoboCircular(Robo):
         if self.angulo > 360:
             self.angulo -= 360
         angulo_rad = math.radians(self.angulo)
-        
         self.center_y += self.v_descida
-        
         self.rect.x = int(self.center_x + self.raio * math.cos(angulo_rad))
         self.rect.y = int(self.center_y + self.raio * math.sin(angulo_rad))
 
@@ -308,18 +349,14 @@ class RoboCircular(Robo):
 class RoboPulante(Robo):
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=2, image_key='robo_saltador')
-        
-        self.cooldown_pulo = random.randint(40, 80) 
+        self.cooldown_pulo = random.randint(40, 80)
         self.timer = 0
         self.forca_pulo = random.randint(-80, -40)
         self.vida = 1
 
     def atualizar_posicao(self):
-        # Descida contínua
-        self.rect.y += self.velocidade 
+        self.rect.y += self.velocidade
         self.timer += 1
-
-        # Lógica de pulo
         if self.timer >= self.cooldown_pulo:
             self.rect.y += self.forca_pulo
             self.timer = 0
@@ -330,11 +367,10 @@ class RoboPulante(Robo):
         if self.rect.y > ALTURA:
             self.kill()
 
-#BOSS
+
 class Boss(Robo):
     def __init__(self, x, y):
-        super().__init__(x, y, velocidade=2, image_key='boss') 
-
+        super().__init__(x, y, velocidade=2, image_key='boss')
         self.vida = 100
         self.mov_direcao = 1
         self.atirar_timer = 0
@@ -351,16 +387,13 @@ class Boss(Robo):
 
     def update(self):
         global estado_jogo
-
         if estado_jogo != "BOSS":
             return
-
         self.atualizar_posicao()
         self.atirar_timer += 1
         if self.atirar_timer >= 40:
             self.atirar()
             self.atirar_timer = 0
-
         if self.vida <= 0:
             estado_jogo = "WIN"
             self.kill()
@@ -368,7 +401,7 @@ class Boss(Robo):
 
 class BossTiro(Entidade):
     def __init__(self, x, y):
-        super().__init__(x, y, 5, 'boss_tiro') 
+        super().__init__(x, y, 5, 'boss_tiro')
 
     def update(self):
         self.rect.y += self.velocidade
@@ -376,24 +409,44 @@ class BossTiro(Entidade):
             self.kill()
 
 
-# POWERUPS
+# PowerUp — versão correta
 class PowerUp(RoboZigueZague):
     def __init__(self, x, y, tipo):
-        
         sprite_map = {
             "vida": 'power_vida',
             "velocidade": 'power_velocidade',
             "tirotriplo": 'power_tirotriplo',
         }
-
-        super(RoboZigueZague, self).__init__(x, y, velocidade=3, image_key=sprite_map[tipo]) 
-
+        super().__init__(x, y)
+        key = sprite_map[tipo]
+        self.image = sprites[key]
+        self.rect = self.image.get_rect(center=(x, y))
         self.tipo = tipo
         self.velocidade = 3
-        self.direcao = 1 
+        self.direcao = 1
+
+    def atualizar_posicao(self):
+        self.rect.y += self.velocidade
+        self.rect.x += self.direcao * 2
+        if self.rect.x <= 0 or self.rect.x >= LARGURA - self.rect.width:
+            self.direcao *= -1
+
+    def update(self):
+        self.atualizar_posicao()
+        if self.rect.y > ALTURA:
+            self.kill()
 
 
-# GRUPOS
+# Classe auxiliar (enemies com vida extra)
+class RoboComVida(Robo):
+    def __init__(self, x, y, velocidade, image_key, vida=1):
+        super().__init__(x, y, velocidade, image_key)
+        self.vida = vida
+
+
+# -----------------------
+# GRUPOS E VARIÁVEIS INICIAIS
+# -----------------------
 todos_sprites = pygame.sprite.Group()
 inimigos = pygame.sprite.Group()
 tiros = pygame.sprite.Group()
@@ -411,10 +464,16 @@ tempo_velocidade = 0
 tempo_tirotriplo = 0
 delay_tiro = 0
 
-# Variáveis para o easter egg
-caçador_transformacao = None  # Referência ao caçador especial
-caçador_jaConhecido = False   # Flag para evitar múltiplos caçadores especiais
+# Easter egg flags
+cacador_transformacao = None
+cacador_ja_conhecido = False
 
+estado_jogo = "NORMAL"
+aviso_timer = 0
+
+# -----------------------
+# LOOP PRINCIPAL
+# -----------------------
 rodando = True
 while rodando:
     clock.tick(FPS)
@@ -424,7 +483,6 @@ while rodando:
     delay_tiro += 0.2
     if delay_tiro >= 4:
         if keys[pygame.K_SPACE]:
-            # Reduz delay de tiro quando transformado
             delay_tiro_ajustado = 2 if jogador.transformado else 4
             if delay_tiro >= delay_tiro_ajustado:
                 if tempo_tirotriplo > 0:
@@ -432,53 +490,42 @@ while rodando:
                     t2 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
                     t3 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
                     for t in (t1, t2, t3):
-                        todos_sprites.add(t)
-                        tiros.add(t)
+                        todos_sprites.add(t); tiros.add(t)
                 elif jogador.transformado:
-                    # Tiro triplo quando transformado
                     t1 = Tiro(jogador.rect.centerx, jogador.rect.y)
                     t2 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
                     t3 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
                     for t in (t1, t2, t3):
-                        todos_sprites.add(t)
-                        tiros.add(t)
+                        todos_sprites.add(t); tiros.add(t)
                 else:
                     t = Tiro(jogador.rect.centerx, jogador.rect.y)
-                    todos_sprites.add(t)
-                    tiros.add(t)
+                    todos_sprites.add(t); tiros.add(t)
                 delay_tiro = 0
-                
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             rodando = False
 
-        # REINICIAR APÓS VITÓRIA
+        # Reiniciar após WIN
         if estado_jogo == "WIN":
             if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-
                 pontos = 0
                 jogador.vida = 5
                 jogador.rect.center = (LARGURA // 2, ALTURA - 60)
-                
-                # Reverter transformação ao reiniciar
                 if jogador.transformado:
                     jogador.desativar_transformacao()
-                caçador_jaConhecido = False
-                jogador.cacador_desabilitado = False  # Reseta para próximo jogo
-
-                # limpar tudo menos o jogador
-                for grp in (inimigos, tiros, powerups, tiros_chefao, todos_sprites):
+                cacador_ja_conhecido = False
+                jogador.cacador_desabilitado = False
+                for grp in (inimigos, tiros, powerups, tiros_chefao, explosoes):
                     for s in grp.copy():
-                        if not isinstance(s, Jogador):
-                            s.kill()
-
+                        s.kill()
                 chefao = None
                 estado_jogo = "NORMAL"
 
-    #Lógica da chegada do CHEFÃO
+    # CHEFÃO incoming
     if pontos >= 50 and estado_jogo == "NORMAL":
         estado_jogo = "BOSS_INCOMING"
-        aviso_timer = FPS * 2 
+        aviso_timer = FPS * 2
 
     if estado_jogo == "BOSS_INCOMING":
         aviso_timer -= 1
@@ -487,45 +534,38 @@ while rodando:
             chefao = Boss(LARGURA // 2, 120)
             todos_sprites.add(chefao)
 
-    # Spawn de inimigos APENAS no modo NORMAL
+    # SPAWN (NORMAL)
     if estado_jogo == "NORMAL":
         spawn_timer += 1
-        if spawn_timer > 60: 
+        if spawn_timer > 60:
             rand = random.random()
-            x_pos = random.randint(50, LARGURA - 50) 
-            
+            x_pos = random.randint(50, LARGURA - 50)
+
             if rand < 0.15 and not jogador.transformado and not jogador.cacador_desabilitado:
-                # Caçador NÃO spawna quando transformado ou após ser usado
                 robo = RoboCacador(x_pos, -50)
             elif rand < 0.30:
-                robo = RoboCircular(
-                    x=x_pos, 
-                    y=-50,
-                    raio=random.randint(20, 60),
-                    v_descida=1, 
-                    v_angular=random.uniform(3, 6)
-                )
+                robo = RoboCircular(x_pos, -50, raio=random.randint(20, 60), v_descida=1, v_angular=random.uniform(3, 6))
             elif rand < 0.45:
                 robo = RoboPulante(x_pos, -50)
             elif rand < 0.60:
-                robo = RoboRapido(x_pos, -50) 
+                robo = RoboRapido(x_pos, -50)
             elif rand < 0.75:
                 robo = RoboLento(x_pos, -50)
             else:
-                robo = RoboZigueZague(x_pos, -50) 
+                robo = RoboZigueZague(x_pos, -50)
 
             todos_sprites.add(robo)
             inimigos.add(robo)
             spawn_timer = 0
 
-        # Power-ups NÃO spawnam quando transformado
+        # powerups spawn probabilístico (não quando transformado)
         if random.random() < 0.005 and not jogador.transformado:
             tipo = random.choice(["vida", "velocidade", "tirotriplo"])
             r = PowerUp(random.randint(40, LARGURA - 40), -40, tipo)
             todos_sprites.add(r)
             powerups.add(r)
 
-    # colisão powerup
+    # coleta powerups
     for p in pygame.sprite.spritecollide(jogador, powerups, True):
         if p.tipo == "vida":
             jogador.vida += 1
@@ -534,81 +574,89 @@ while rodando:
             tempo_velocidade = FPS * 5
         elif p.tipo == "tirotriplo":
             tempo_tirotriplo = FPS * 5
-    
-    #explosão e colisões
+
+    # colisões: inimigos x tiros -> explosão + drops
     acertos = pygame.sprite.groupcollide(inimigos, tiros, True, True)
-
     for inimigo in acertos:
-        explosao = Explosao(inimigo.rect.centerx, inimigo.rect.centery)
-        explosoes.add(explosao)
-        todos_sprites.add(explosao)
-        pontos+=1
+        explos = Explosao(inimigo.rect.centerx, inimigo.rect.centery)
+        explosoes.add(explos); todos_sprites.add(explos)
+        pontos += 1
+        # chance de drop ao morrer (10%)
+        if random.random() < 0.10:
+            tipo = random.choice(["vida", "velocidade", "tirotriplo"])
+            p = PowerUp(inimigo.rect.centerx, inimigo.rect.centery, tipo)
+            powerups.add(p); todos_sprites.add(p)
 
+    # hits (quando jogador transformado causa necessidade de mais tiros)
     hits = pygame.sprite.groupcollide(inimigos, tiros, False, True)
     for inimigo, lista_tiros in hits.items():
-        # Se transformado, inimigos precisam de 2 tiros
         dano = len(lista_tiros)
         if jogador.transformado:
             if hasattr(inimigo, 'vida'):
                 inimigo.vida -= dano
                 if inimigo.vida <= 0:
-                    inimigo.kill()
-                    pontos += 1
+                    inimigo.kill(); pontos += 1
+                    if random.random() < 0.10:
+                        tipo = random.choice(["vida", "velocidade", "tirotriplo"])
+                        p = PowerUp(inimigo.rect.centerx, inimigo.rect.centery, tipo)
+                        powerups.add(p); todos_sprites.add(p)
             else:
-                # Inimigos sem vida (normais) precisam de 2 tiros quando transformado
                 if dano >= 2:
-                    inimigo.kill()
-                    pontos += 1
+                    inimigo.kill(); pontos += 1
+                    if random.random() < 0.10:
+                        tipo = random.choice(["vida", "velocidade", "tirotriplo"])
+                        p = PowerUp(inimigo.rect.centerx, inimigo.rect.centery, tipo)
+                        powerups.add(p); todos_sprites.add(p)
         else:
-            # Modo normal: 1 tiro mata
-            inimigo.kill()
-            pontos += len(lista_tiros)
+            # modo normal: 1 tiro mata
+            inimigo.kill(); pontos += len(lista_tiros)
+            if random.random() < 0.10:
+                tipo = random.choice(["vida", "velocidade", "tirotriplo"])
+                p = PowerUp(inimigo.rect.centerx, inimigo.rect.centery, tipo)
+                powerups.add(p); todos_sprites.add(p)
 
+    # dano no chefao
     if chefao:
         tiros_acertaram = pygame.sprite.spritecollide(chefao, tiros, True)
         chefao.vida -= len(tiros_acertaram)
 
-    # COLISÃO ESPECIAL: Caçador (Easter Egg)
+    # colisão especial: caçador ativa transformação
     colisao_cacador = pygame.sprite.spritecollide(jogador, inimigos, False)
-    for inimigo in colisao_cacador:
+    for inimigo in list(colisao_cacador):
         if isinstance(inimigo, RoboCacador) and not jogador.transformado:
-            # Ativa transformação!
             jogador.ativar_transformacao()
             inimigo.kill()
-            # Muda as cores de fundo
-            cor_fundo_alterada = True
+            cacador_ja_conhecido = True
         elif isinstance(inimigo, RoboCacador) and jogador.transformado:
-            # Se já está transformado, apenas mata o caçador normalmente
             inimigo.kill()
 
-    # Tiros do chefão acertam o jogador
+    # tiros do chefao atingem jogador
     if pygame.sprite.spritecollide(jogador, tiros_chefao, True):
         jogador.vida -= 1
-        # Reverte transformação ao tomar dano
         if jogador.transformado:
             jogador.desativar_transformacao()
-            caçador_jaConhecido = False
+            cacador_ja_conhecido = False
         if jogador.vida <= 0:
             print("GAME OVER")
             rodando = False
 
-    # Colisão com inimigos normais (exceto caçador que já foi tratado)
+    # colisão com inimigos normais (já removemos caçador acima)
     colisao_inimigos = pygame.sprite.spritecollide(jogador, inimigos, True)
     for inimigo in colisao_inimigos:
-        if not isinstance(inimigo, RoboCacador):  # Caçador já foi tratado acima
+        if not isinstance(inimigo, RoboCacador):
             jogador.vida -= 1
-            # Reverte transformação ao tomar dano
             if jogador.transformado:
                 jogador.desativar_transformacao()
-                caçador_jaConhecido = False
+                cacador_ja_conhecido = False
             if jogador.vida <= 0:
                 print("GAME OVER")
                 rodando = False
 
+    # timers
     if tempo_velocidade > 0:
         tempo_velocidade -= 1
         if tempo_velocidade == 0:
-            jogador.velocidade = 5
+            jogador.velocidade = jogador.velocidade_original
 
     if tempo_tirotriplo > 0:
         tempo_tirotriplo -= 1
@@ -617,18 +665,26 @@ while rodando:
     tiros_chefao.update()
     explosoes.update()
 
-    # DESENHO
-    # Altera cor de fundo quando transformado
-    cor_fundo = (0, 20, 20) if jogador.transformado else (20, 20, 20)
-    TELA.fill(cor_fundo)
-    todos_sprites.draw(TELA)
+    # DESENHO DO FUNDO (com efeito quando transformado)
+    if jogador.transformado:
+        fundo_mod = fundo.copy()
+        overlay = pygame.Surface((LARGURA, ALTURA))
+        overlay.fill((0, 40, 40))
+        overlay.set_alpha(120)
+        fundo_mod.blit(overlay, (0, 0))
+        TELA.blit(fundo_mod, (0, 0))
+    else:
+        TELA.blit(fundo, (0, 0))
 
+    # Desenha sprites e explosões
+    todos_sprites.draw(TELA)
+    explosoes.draw(TELA)
+
+    # HUD
     font = pygame.font.SysFont(None, 30)
     texto = font.render(f"Vida: {jogador.vida} | Pontos: {pontos}", True, (255, 255, 255))
     TELA.blit(texto, (10, 10))
-    
-    explosoes.draw(TELA)
-    # Exibe status de transformação
+
     if jogador.transformado:
         status_text = font.render("TRANSFORMADO!", True, (0, 255, 255))
         TELA.blit(status_text, (LARGURA - 220, 10))
@@ -652,9 +708,3 @@ while rodando:
     pygame.display.flip()
 
 pygame.quit()
-
-# Classe para controlar dano em inimigos
-class RoboComVida(Robo):
-    def __init__(self, x, y, velocidade, image_key, vida=1):
-        super().__init__(x, y, velocidade, image_key)
-        self.vida = vida
