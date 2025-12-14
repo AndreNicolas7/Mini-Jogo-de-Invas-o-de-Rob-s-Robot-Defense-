@@ -1,31 +1,90 @@
-# main.py — jogo completo com intro em vídeo (OpenCV) e fundo restaurado
 import pygame
 import random
 import math
 import os
-import cv2
-import numpy as np
+import sys
+
+try:
+    import cv2
+    OPENCV_OK = True
+except Exception:
+    OPENCV_OK = False
 
 pygame.init()
 
-# -----------------------
-# CONFIGURAÇÕES BÁSICAS
-# -----------------------
 LARGURA = 800
 ALTURA = 600
 TELA = pygame.display.set_mode((LARGURA, ALTURA))
-pygame.display.set_caption("Robot Defense - Template")
+pygame.display.set_caption("Power Rangers: Robot Defense")
 
 FPS = 60
 clock = pygame.time.Clock()
 
-SPRITES_DIR = 'sprites/'
+SPRITES_DIR = 'sprites'
+AUDIOS_DIR = 'audios'
 
-# -----------------------
-# FUNÇÃO PARA TOCAR VÍDEO (OpenCV)
-# -----------------------
+if not os.path.exists(SPRITES_DIR):
+    os.makedirs(SPRITES_DIR)
+if not os.path.exists(AUDIOS_DIR):
+    os.makedirs(AUDIOS_DIR)
+    print(f"ATENÇÃO: Criada pasta '{AUDIOS_DIR}'. Coloque seus arquivos de áudio lá.")
+
+pygame.mixer.init()
+audios = {}
+music_status = True
+
+def carregar_audio(nome_arquivo, tipo="sfx"):
+    caminho_completo = os.path.join(AUDIOS_DIR, nome_arquivo)
+    try:
+        if tipo == "sfx":
+            audio = pygame.mixer.Sound(caminho_completo)
+        else:
+            audio = caminho_completo
+        return audio
+    except pygame.error as e:
+        print(f"AVISO: Não foi possível carregar o áudio '{nome_arquivo}'. Erro: {e}")
+        return None
+
+def carregar_todos_audios():
+    global audios
+
+    audios['chegada_chefao'] = carregar_audio('chegada_chefao.wav', 'sfx')
+    audios['clique_botao'] = carregar_audio('clique_botao.wav', 'sfx')
+    audios['game_over'] = carregar_audio('game_over.wav', 'sfx')
+    audios['morte_chefao'] = carregar_audio('morte_chefao.wav', 'sfx')
+    audios['perca_easter_egg'] = carregar_audio('perca_easter_egg.wav', 'sfx')
+    audios['power_up'] = carregar_audio('power_up.wav', 'sfx')
+    audios['tiro'] = carregar_audio('tiro.wav', 'sfx')
+    audios['transformacao_easter_egg'] = carregar_audio('transformacao_easter_egg.wav', 'sfx')
+    
+    audios['trilha_jogo'] = carregar_audio('trilha_sonora_1.mp3', 'musica') # Trilha normal
+    audios['trilha_boss'] = carregar_audio('trilha_sonora_3.mp3', 'musica') # Trilha do chefão
+
+def play_sfx(key):
+    global music_status
+    if music_status and audios.get(key) and isinstance(audios[key], pygame.mixer.Sound):
+        audios[key].play()
+
+def play_music(key, loops=-1):
+    global music_status
+    caminho = audios.get(key)
+    if music_status and caminho and isinstance(caminho, str) and os.path.exists(caminho):
+        try:
+            pygame.mixer.music.load(caminho)
+            pygame.mixer.music.play(loops)
+        except pygame.error as e:
+            print(f"Erro ao tocar música {key}: {e}")
+        
+def stop_music():
+    pygame.mixer.music.stop()
+
+carregar_todos_audios()
+
 def tocar_video_intro(caminho_video):
-    """Reproduz vídeo usando OpenCV e permite pular com qualquer tecla."""
+    if not OPENCV_OK:
+        print("OpenCV não está disponível — pulando intro.")
+        return
+
     if not os.path.exists(caminho_video):
         print(f"Intro: arquivo {caminho_video} não encontrado, pulando intro.")
         return
@@ -43,33 +102,27 @@ def tocar_video_intro(caminho_video):
         if not ret:
             break
 
-        # Converte BGR -> RGB e redimensiona
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frame = cv2.resize(frame, (LARGURA, ALTURA), interpolation=cv2.INTER_LINEAR)
 
-        # Cria surface diretamente (sem rotacionar)
         surface = pygame.image.frombuffer(frame.tobytes(), (LARGURA, ALTURA), 'RGB')
 
         TELA.blit(surface, (0, 0))
         pygame.display.flip()
 
-        # Eventos: pular com qualquer tecla ou fechar
         for event in pygame.event.get():
-            if event.type == pygame.KEYDOWN or event.type == pygame.QUIT:
+            if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
                 cap.release()
                 return
+            if event.type == pygame.QUIT:
+                cap.release()
+                pygame.quit()
+                sys.exit()
 
         clock.tick(int(fps_video))
 
     cap.release()
 
-# chama a intro (arquivo deve estar na mesma pasta)
-tocar_video_intro("lv_0_20251208094527.mp4")
-
-
-# -----------------------
-# CARREGAMENTO DO FUNDO
-# -----------------------
 def carregar_fundo(caminho):
     try:
         img = pygame.image.load(caminho).convert()
@@ -80,98 +133,275 @@ def carregar_fundo(caminho):
         s.fill((20, 20, 20))
         return s
 
-# caminho padrão: sprites/fundo.png
 fundo = carregar_fundo(os.path.join(SPRITES_DIR, 'fundo.png'))
 
-
-# -----------------------
-# FUNÇÃO DE CARREGAMENTO DE SPRITES
-# -----------------------
 def carregar_sprite(nome_arquivo, cor_fallback=(0, 0, 0), largura=40, altura=40):
+    largura_target, altura_target = largura, altura
+    
     if 'power_' in nome_arquivo:
-        largura, altura = 40, 40
+        largura_target, altura_target = 40, 40
     elif nome_arquivo == 'jogador.png':
-        largura, altura = 60, 60
+        largura_target, altura_target = 60, 60
     elif nome_arquivo == 'tiro.png':
-        largura, altura = 12, 24
+        largura_target, altura_target = 12, 24
     elif nome_arquivo == 'boss.png':
-        largura, altura = 150, 150
+        largura_target, altura_target = 150, 150
     elif nome_arquivo == 'boss_tiro.png':
-        largura, altura = 25, 35
-    else:
-        largura, altura = 50, 50
+        largura_target, altura_target = 25, 35
+    elif nome_arquivo == 'Botaopause.jpg':
+        largura_target, altura_target = 60, 60
+    
+    if nome_arquivo == 'Pause.jpg':
+        try:
+            imagem = pygame.image.load(os.path.join(SPRITES_DIR, nome_arquivo)).convert_alpha()
+            
+            MAX_W = 400
+            w_original, h_original = imagem.get_size()
+            
+            if w_original > MAX_W:
+                ratio = MAX_W / w_original
+                nova_w = MAX_W
+                nova_h = int(h_original * ratio)
+                imagem = pygame.transform.scale(imagem, (nova_w, nova_h))
+            
+            return imagem
+        except Exception:
+            print(f"ATENÇÃO: Não foi possível carregar a sprite {nome_arquivo}. Gerando fallback.")
+            surface = pygame.Surface((400, 150), pygame.SRCALPHA)
+            surface.fill((0, 0, 150))
+            return surface
 
     caminho_completo = os.path.join(SPRITES_DIR, nome_arquivo)
     try:
         imagem = pygame.image.load(caminho_completo).convert_alpha()
-        imagem = pygame.transform.scale(imagem, (largura, altura))
+        imagem = pygame.transform.scale(imagem, (largura_target, altura_target))
         return imagem
-    except (pygame.error, FileNotFoundError):
+    except Exception:
         print(f"ATENÇÃO: Não foi possível carregar a sprite {caminho_completo}. Gerando fallback.")
-        surface = pygame.Surface((largura, altura)).convert_alpha()
-        surface.fill(cor_fallback)
+        surface = pygame.Surface((largura_target, altura_target), pygame.SRCALPHA)
+        if nome_arquivo == 'Botaopause.jpg':
+             pygame.draw.rect(surface, (255, 255, 255), surface.get_rect(), 2)
+             pygame.draw.line(surface, (0, 0, 0), (largura//3, altura//4), (largura//3, altura*3//4), 5)
+             pygame.draw.line(surface, (0, 0, 0), (largura*2//3, altura//4), (largura*2//3, altura*3//4), 5)
+        else:
+             surface.fill(cor_fallback)
         return surface
+    
+tela_inicial_path = os.path.join(SPRITES_DIR, 'tela_inicial.png')
+try:
+    if os.path.exists(tela_inicial_path):
+        tela_inicial_img = pygame.image.load(tela_inicial_path).convert_alpha()
+        tela_inicial_img = pygame.transform.scale(tela_inicial_img, (LARGURA, ALTURA))
+    else:
+        raise FileNotFoundError
+except Exception:
+    def gerar_tela_inicial_fallback():
+        s = pygame.Surface((LARGURA, ALTURA))
+        s.fill((20, 160, 100))
+        font_t = pygame.font.SysFont(None, 80)
+        font_s = pygame.font.SysFont(None, 36)
+        titulo = font_t.render("POWER RANGERS", True, (255, 215, 0))
+        subt = font_t.render("ROBOT DEFENSE", True, (255, 255, 255))
+        instru = font_s.render("Clique em PLAY ou pressione ENTER", True, (230, 230, 230))
+        s.blit(titulo, (LARGURA//2 - titulo.get_width()//2, 120))
+        s.blit(subt, (LARGURA//2 - subt.get_width()//2, 200))
+        s.blit(instru, (LARGURA//2 - instru.get_width()//2, 360))
+        return s
+    tela_inicial_img = gerar_tela_inicial_fallback()
+    print("sprites/tela_inicial.png não encontrado — será usado fallback gerado.")
+
+botao_largura = 80
+botao_espacamento = 30
+total_largura = 2 * botao_largura + botao_espacamento
+x_inicial = LARGURA//2 - total_largura//2
+
+botao_play = pygame.Rect(x_inicial, 420, botao_largura, botao_largura)
+botao_profile = pygame.Rect(x_inicial + botao_largura + botao_espacamento, 420, botao_largura, botao_largura)
+
+def desenhar_hover(surface, rect):
+    overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+    overlay.fill((255,255,255,30))
+    surface.blit(overlay, (rect.x, rect.y))
+
+def tela_inicial():
+    global estado_jogo
+    stop_music()
+    while True:
+        mouse_pos = pygame.mouse.get_pos()
+        TELA.blit(tela_inicial_img, (0,0))
+
+        if botao_play.collidepoint(mouse_pos):
+            desenhar_hover(TELA, botao_play)
+        if botao_profile.collidepoint(mouse_pos):
+            desenhar_hover(TELA, botao_profile)
+
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    play_sfx('clique_botao')
+                    estado_jogo = "COUNTDOWN"
+                    return
+
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                x, y = event.pos
+                if botao_play.collidepoint(x, y):
+                    play_sfx('clique_botao')
+                    estado_jogo = "COUNTDOWN"
+                    return
+                if botao_profile.collidepoint(x, y):
+                    play_sfx('clique_botao')
+                    abrir_perfil()
+
+        clock.tick(FPS)
+
+def abrir_perfil():
+    try:
+        img = pygame.image.load(os.path.join(SPRITES_DIR, "Agradecimentos (1).png")).convert()
+        img = pygame.transform.scale(img, (LARGURA, ALTURA))
+    except Exception:
+        img = TELA.copy()
+        img.fill((50, 50, 50))
+        font = pygame.font.SysFont(None, 60)
+        text = font.render("Perfil/Agradecimentos (Placeholder)", True, (255, 255, 255))
+        img.blit(text, (LARGURA//2 - text.get_width()//2, ALTURA//2 - text.get_height()//2))
+
+    rect_voltar = pygame.Rect(40, ALTURA - 120, 80, 80)
+
+    rodando = True
+    while rodando:
+        TELA.blit(img, (0, 0))
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                return
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if rect_voltar.collidepoint(event.pos):
+                    return
+        clock.tick(FPS)
+
+def reset_game_state():
+    global todos_sprites, inimigos, tiros, powerups, tiros_chefao, explosoes, chefao, pontos, cacador_ja_conhecido, jogador, spawn_timer, delay_tiro, tempo_velocidade, tempo_tirotriplo
+    
+    todos_sprites.empty(); inimigos.empty(); tiros.empty(); powerups.empty(); tiros_chefao.empty(); explosoes.empty();
+    
+    jogador = Jogador(LARGURA // 2, ALTURA - 60)
+    todos_sprites.add(jogador)
+    
+    pontos = 0
+    chefao = None
+    cacador_ja_conhecido = False
+    spawn_timer = 0
+    delay_tiro = 0
+    tempo_velocidade = 0
+    tempo_tirotriplo = 0
 
 
-# -----------------------
-# SPRITES PRINCIPAIS
-# -----------------------
+def contagem_regressiva():
+    global estado_jogo
+    
+    reset_game_state()
+    
+    fonte = pygame.font.SysFont(None, 200, bold=True)
+    contagem_inicial = 5
+    tempo_inicio = pygame.time.get_ticks()
+    ultimo_numero_tocado = contagem_inicial + 1
+
+    while True:
+        tempo_decorrido = pygame.time.get_ticks() - tempo_inicio
+        tempo_restante_seg = contagem_inicial - (tempo_decorrido // 1000)
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+
+        if tempo_restante_seg < 1:
+            play_music('trilha_jogo')
+            estado_jogo = "NORMAL"
+            return
+
+        TELA.blit(fundo, (0, 0))
+        
+        if tempo_restante_seg < ultimo_numero_tocado:
+             play_sfx('contagem')
+             ultimo_numero_tocado = tempo_restante_seg
+        
+        texto = fonte.render(str(tempo_restante_seg), True, (255, 255, 255))
+        sombra = fonte.render(str(tempo_restante_seg), True, (0, 0, 0))
+        
+        TELA.blit(sombra, (LARGURA // 2 - sombra.get_width() // 2 + 3, ALTURA // 2 - sombra.get_height() // 2 + 3))
+        TELA.blit(texto, (LARGURA // 2 - texto.get_width() // 2, ALTURA // 2 - texto.get_height() // 2))
+
+        pygame.display.flip()
+        clock.tick(FPS)
+
+
+def tela_game_over(pontos_finais):
+    global estado_jogo
+    
+    stop_music()
+    play_sfx('game_over')
+    
+    TELA.blit(fundo, (0, 0))
+    overlay = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 180))
+    TELA.blit(overlay, (0, 0))
+
+    font_titulo = pygame.font.SysFont(None, 120, bold=True)
+    font_sub = pygame.font.SysFont(None, 40)
+    
+    titulo = font_titulo.render("GAME OVER", True, (255, 0, 0))
+    score_text = font_sub.render(f"Pontuação Final: {pontos_finais}", True, (255, 255, 255))
+    instrucao = font_sub.render("Pressione ENTER para Recomeçar ou ESC para Menu", True, (150, 150, 150))
+    
+    TELA.blit(titulo, (LARGURA // 2 - titulo.get_width() // 2, ALTURA // 3))
+    TELA.blit(score_text, (LARGURA // 2 - score_text.get_width() // 2, ALTURA // 2))
+    TELA.blit(instrucao, (LARGURA // 2 - instrucao.get_width() // 2, ALTURA * 2 // 3))
+    
+    pygame.display.flip()
+
+    while estado_jogo == "GAME_OVER":
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    estado_jogo = "COUNTDOWN"
+                    return
+                if event.key == pygame.K_ESCAPE:
+                    reset_game_state()
+                    estado_jogo = "MENU"
+                    return
+        clock.tick(FPS)
+
 sprites = {
-    'jogador': carregar_sprite('jogador.png', cor_fallback=(0, 255, 0)),
-    'tiro': carregar_sprite('tiro.png', cor_fallback=(255, 255, 0)),
-    'robo_zigue': carregar_sprite('robo_zigue.png', cor_fallback=(255, 0, 0)),
-    'robo_cacador': carregar_sprite('robo_cacador.png', cor_fallback=(255, 100, 0)),
-    'robo_lento': carregar_sprite('robo_lento.png', cor_fallback=(100, 0, 255)),
-    'robo_rapido': carregar_sprite('robo_rapido.png', cor_fallback=(0, 100, 255)),
-    'robo_ciclico': carregar_sprite('robo_ciclico.png', cor_fallback=(255, 0, 100)),
-    'robo_saltador': carregar_sprite('robo_saltador.png', cor_fallback=(150, 0, 150)),
-    'power_vida': carregar_sprite('power_vida.png', cor_fallback=(0, 0, 255)),
-    'power_velocidade': carregar_sprite('power_velocidade.png', cor_fallback=(163, 73, 14)),
-    'power_tirotriplo': carregar_sprite('power_tirotriplo.png', cor_fallback=(255, 141, 161)),
-    'boss': carregar_sprite('boss.png', cor_fallback=(0, 0, 150)),
-    'boss_tiro': carregar_sprite('boss_tiro.png', cor_fallback=(0, 0, 255)),
+    'jogador': carregar_sprite('jogador.png', cor_fallback=(0, 255, 0), largura=60, altura=60),
+    'tiro': carregar_sprite('tiro.png', cor_fallback=(255, 255, 0), largura=12, altura=24),
+    'robo_zigue': carregar_sprite('robo_zigue.png', cor_fallback=(255, 0, 0), largura=50, altura=50),
+    'robo_cacador': carregar_sprite('robo_cacador.png', cor_fallback=(255, 100, 0), largura=50, altura=50),
+    'robo_lento': carregar_sprite('robo_lento.png', cor_fallback=(100, 0, 255), largura=50, altura=50),
+    'robo_rapido': carregar_sprite('robo_rapido.png', cor_fallback=(0, 100, 255), largura=50, altura=50),
+    'robo_ciclico': carregar_sprite('robo_ciclico.png', cor_fallback=(255, 0, 100), largura=50, altura=50),
+    'robo_saltador': carregar_sprite('robo_saltador.png', cor_fallback=(150, 0, 150), largura=50, altura=50),
+    'power_vida': carregar_sprite('power_vida.png', cor_fallback=(0, 0, 255), largura=40, altura=40),
+    'power_velocidade': carregar_sprite('power_velocidade.png', cor_fallback=(163, 73, 14), largura=40, altura=40),
+    'power_tirotriplo': carregar_sprite('power_tirotriplo.png', cor_fallback=(255, 141, 161), largura=40, altura=40),
+    'boss': carregar_sprite('boss.png', cor_fallback=(0, 0, 150), largura=150, altura=150),
+    'boss_tiro': carregar_sprite('boss_tiro.png', cor_fallback=(0, 0, 255), largura=25, altura=35),
     'explosao': carregar_sprite('tentativa.png', cor_fallback=(255, 255, 255), largura=274, altura=384),
+    'pause_button_sprite': carregar_sprite('Botaopause.jpg', cor_fallback=(0, 0, 0), largura=60, altura=60),
+    'menu_pause_fundo': carregar_sprite('Pause.jpg', cor_fallback=(0, 0, 100))  
 }
 
-
-# -----------------------
-# ANIMAÇÃO DE EXPLOSÃO
-# -----------------------
-explosao_frames = []
-sheet = sprites['explosao']
-cols, rows = 1, 1
-fw = sheet.get_width() // cols
-fh = sheet.get_height() // rows
-for i in range(rows):
-    for j in range(cols):
-        frame = sheet.subsurface((j * fw, i * fh, fw, fh))
-        frame = pygame.transform.scale(frame, (80, 80))
-        explosao_frames.append(frame)
-
-
-class Explosao(pygame.sprite.Sprite):
-    def __init__(self, x, y):
-        super().__init__()
-        self.frames = explosao_frames
-        self.frame_index = 0
-        self.image = self.frames[self.frame_index]
-        self.rect = self.image.get_rect(center=(x, y))
-        self.counter = 0
-
-    def update(self):
-        self.counter += 1
-        if self.counter >= 15:
-            self.counter = 0
-            self.frame_index += 1
-            if self.frame_index >= len(self.frames):
-                self.kill()
-            else:
-                self.image = self.frames[self.frame_index]
-
-
-# -----------------------
-# CLASSES DO JOGO
-# -----------------------
 class Entidade(pygame.sprite.Sprite):
     def __init__(self, x, y, velocidade, image_key):
         super().__init__()
@@ -179,29 +409,23 @@ class Entidade(pygame.sprite.Sprite):
         self.image = sprites[image_key]
         self.rect = self.image.get_rect(center=(x, y))
 
-
 class Jogador(Entidade):
     def __init__(self, x, y):
-        super().__init__(x, y, 5, 'jogador')
+        self.velocidade_original = 5
+        super().__init__(x, y, self.velocidade_original, 'jogador')
+
         self.vida = 5
         self.transformado = False
-        self.tamanho_original = (60, 60)
-        self.velocidade_original = 5
         self.cacador_desabilitado = False
+        self.delay_transformacao = 0
 
     def ativar_transformacao(self):
-        self.transformado = True
-        novo_tamanho = (int(60 * 1.3), int(60 * 1.3))
-        self.image = pygame.transform.scale(sprites['jogador'], novo_tamanho)
-        self.rect = self.image.get_rect(center=self.rect.center)
-        self.velocidade = 6.5
+        if not self.transformado:
+            self.transformado = True
 
     def desativar_transformacao(self):
-        self.transformado = False
-        self.image = pygame.transform.scale(sprites['jogador'], self.tamanho_original)
-        self.rect = self.image.get_rect(center=self.rect.center)
-        self.velocidade = self.velocidade_original
-        self.cacador_desabilitado = True
+        if self.transformado:
+            self.transformado = False
 
     def update(self):
         keys = pygame.key.get_pressed()
@@ -217,236 +441,132 @@ class Jogador(Entidade):
         self.rect.x = max(0, min(self.rect.x, LARGURA - self.rect.width))
         self.rect.y = max(0, min(self.rect.y, ALTURA - self.rect.height))
 
-
 class Tiro(Entidade):
     def __init__(self, x, y):
-        super().__init__(x, y, 10, 'tiro')
-
+        super().__init__(x, y, velocidade=8, image_key='tiro')
     def update(self):
         self.rect.y -= self.velocidade
         if self.rect.y < 0:
             self.kill()
 
-
-class TiroDiagonal(Tiro):
-    def __init__(self, x, y, direcao_x):
-        super().__init__(x, y)
-        self.direcao_x = direcao_x
-        self.velocidade_x = 4
-
+class TiroDiagonal(Entidade):
+    def __init__(self, x, y, direcao):
+        super().__init__(x, y, velocidade=8, image_key='tiro')
+        self.direcao = direcao
     def update(self):
         self.rect.y -= self.velocidade
-        self.rect.x += self.direcao_x * self.velocidade_x
+        self.rect.x += self.velocidade * 0.5 * self.direcao
         if self.rect.y < 0 or self.rect.x < 0 or self.rect.x > LARGURA:
             self.kill()
 
-
-# ----- Robôs -----
-class Robo(Entidade):
-    def atualizar_posicao(self):
-        raise NotImplementedError
-
-
-class RoboZigueZague(Robo):
+class RoboZigueZague(Entidade):
     def __init__(self, x, y):
-        super().__init__(x, y, velocidade=2, image_key='robo_zigue')
-        self.direcao = 1
-        self.vida = 1
-
-    def atualizar_posicao(self):
+        super().__init__(x, y, velocidade=3, image_key='robo_zigue')
+    def update(self):
         self.rect.y += self.velocidade
-        self.rect.x += self.direcao * 3
-        if self.rect.x <= 0 or self.rect.x >= LARGURA - self.rect.width:
-            self.direcao *= -1
+        if self.rect.top > ALTURA: self.kill()
 
+class RoboCacador(Entidade):
+    def __init__(self, x, y):
+        super().__init__(x, y, velocidade=2, image_key='robo_cacador')
     def update(self):
-        self.atualizar_posicao()
-        if self.rect.y > ALTURA:
-            self.kill()
+        self.rect.y += self.velocidade
+        if self.rect.top > ALTURA: self.kill()
 
-
-class RoboCiclico(RoboZigueZague):
+class RoboLento(Entidade):
     def __init__(self, x, y):
-        super().__init__(x, y)
-        self.image = sprites['robo_ciclico']
-        self.vida = 1
-
-
-class RoboLento(RoboZigueZague):
-    def __init__(self, x, y):
-        super().__init__(x, y)
-        self.image = sprites['robo_lento']
-        self.vida = 1
-
-
-class RoboRapido(RoboZigueZague):
-    def __init__(self, x, y):
-        super().__init__(x, y)
-        self.image = sprites['robo_rapido']
-        self.vida = 1
-
-
-class RoboCacador(Robo):
-    def __init__(self, x, y, velocidade=2, jitter=0.6, usar_jitter=True):
-        super().__init__(x, y, velocidade, image_key='robo_cacador')
-        self.jitter = jitter
-        self.usar_jitter = usar_jitter
-        self.easter_egg = False
-        self.vida = 1
-
-    def atualizar_posicao(self):
-        tx = jogador.rect.centerx
-        ty = jogador.rect.centery
-        dx = tx - self.rect.centerx
-        dy = ty - self.rect.centery
-        dist = math.hypot(dx, dy)
-        if dist == 0:
-            return
-
-        nx = dx / dist
-        ny = dy / dist
-        speed = self.velocidade + (1 if dist < 180 else 0)
-
-        jx = random.uniform(-self.jitter, self.jitter) if self.usar_jitter else 0
-        jy = random.uniform(-self.jitter, self.jitter) if self.usar_jitter else 0
-
-        self.rect.x += int(nx * speed + jx)
-        self.rect.y += int(ny * speed + jy)
-
+        super().__init__(x, y, velocidade=1, image_key='robo_lento')
     def update(self):
-        self.atualizar_posicao()
-        if (self.rect.top > ALTURA + 200 or self.rect.bottom < -200 or
-                self.rect.left < -200 or self.rect.right > LARGURA + 200):
-            self.kill()
+        self.rect.y += self.velocidade
+        if self.rect.top > ALTURA: self.kill()
 
+class RoboRapido(Entidade):
+    def __init__(self, x, y):
+        super().__init__(x, y, velocidade=5, image_key='robo_rapido')
+    def update(self):
+        self.rect.y += self.velocidade
+        if self.rect.top > ALTURA: self.kill()
 
-class RoboCircular(Robo):
+class RoboCircular(Entidade):
     def __init__(self, x, y, raio, v_descida, v_angular):
-        super().__init__(x, y, velocidade=1, image_key='robo_ciclico')
-        self.center_x = x
-        self.center_y = y
-        self.raio = raio
-        self.v_descida = v_descida
-        self.v_angular = v_angular
+        super().__init__(x, y, velocidade=v_descida, image_key='robo_ciclico')
+        self.centro_x = x
         self.angulo = 0
-        self.vida = 1
-
-    def atualizar_posicao(self):
-        self.angulo += self.v_angular
-        if self.angulo > 360:
-            self.angulo -= 360
-        angulo_rad = math.radians(self.angulo)
-        self.center_y += self.v_descida
-        self.rect.x = int(self.center_x + self.raio * math.cos(angulo_rad))
-        self.rect.y = int(self.center_y + self.raio * math.sin(angulo_rad))
-
+        self.raio = raio
+        self.v_angular = v_angular
     def update(self):
-        self.atualizar_posicao()
-        if self.rect.y > ALTURA:
-            self.kill()
+        self.angulo += self.v_angular
+        self.rect.x = self.centro_x + int(self.raio * math.cos(math.radians(self.angulo)))
+        self.rect.y += self.velocidade
+        if self.rect.top > ALTURA: self.kill()
 
-
-class RoboPulante(Robo):
+class RoboPulante(Entidade):
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=2, image_key='robo_saltador')
-        self.cooldown_pulo = random.randint(40, 80)
-        self.timer = 0
-        self.forca_pulo = random.randint(-80, -40)
-        self.vida = 1
-
-    def atualizar_posicao(self):
+    def update(self):
         self.rect.y += self.velocidade
-        self.timer += 1
-        if self.timer >= self.cooldown_pulo:
-            self.rect.y += self.forca_pulo
-            self.timer = 0
-            self.cooldown_pulo = random.randint(40, 80)
+        if self.rect.top > ALTURA: self.kill()
 
-    def update(self):
-        self.atualizar_posicao()
-        if self.rect.y > ALTURA:
-            self.kill()
-
-
-class Boss(Robo):
+class Boss(Entidade):
     def __init__(self, x, y):
-        super().__init__(x, y, velocidade=2, image_key='boss')
+        super().__init__(x, y, velocidade=1, image_key='boss')
         self.vida = 100
-        self.mov_direcao = 1
-        self.atirar_timer = 0
-
-    def atualizar_posicao(self):
-        self.rect.x += self.mov_direcao * 3
-        if self.rect.left <= 0 or self.rect.right >= LARGURA:
-            self.mov_direcao *= -1
-
-    def atirar(self):
-        tiro = BossTiro(self.rect.centerx, self.rect.bottom)
-        todos_sprites.add(tiro)
-        tiros_chefao.add(tiro)
-
+        self.delay_tiro = 0  
     def update(self):
-        global estado_jogo
-        if estado_jogo != "BOSS":
-            return
-        self.atualizar_posicao()
-        self.atirar_timer += 1
-        if self.atirar_timer >= 40:
-            self.atirar()
-            self.atirar_timer = 0
-        if self.vida <= 0:
-            estado_jogo = "WIN"
-            self.kill()
-
+        self.rect.x += self.velocidade
+        if self.rect.left < 0 or self.rect.right > LARGURA:
+            self.velocidade *= -1
 
 class BossTiro(Entidade):
-    def __init__(self, x, y):
-        super().__init__(x, y, 5, 'boss_tiro')
-
+    def __init__(self, x, y, jogador_pos):
+        super().__init__(x, y, velocidade=5, image_key='boss_tiro')
+        
+        dx = jogador_pos[0] - x
+        dy = jogador_pos[1] - y
+        distancia = math.sqrt(dx**2 + dy**2)
+        
+        if distancia > 0:
+            self.dx = dx / distancia
+            self.dy = dy / distancia
+        else:
+            self.dx = 0
+            self.dy = 1 
+            
     def update(self):
-        self.rect.y += self.velocidade
-        if self.rect.top > ALTURA:
+        self.rect.x += self.dx * self.velocidade
+        self.rect.y += self.dy * self.velocidade
+        
+        if self.rect.top > ALTURA or self.rect.bottom < 0 or self.rect.left > LARGURA or self.rect.right < 0:
             self.kill()
 
-
-# PowerUp — versão correta
-class PowerUp(RoboZigueZague):
+class PowerUp(Entidade):
     def __init__(self, x, y, tipo):
-        sprite_map = {
-            "vida": 'power_vida',
-            "velocidade": 'power_velocidade',
-            "tirotriplo": 'power_tirotriplo',
-        }
-        super().__init__(x, y)
-        key = sprite_map[tipo]
-        self.image = sprites[key]
-        self.rect = self.image.get_rect(center=(x, y))
         self.tipo = tipo
-        self.velocidade = 3
-        self.direcao = 1
-
-    def atualizar_posicao(self):
+        key_map = {"vida": "power_vida", "velocidade": "power_velocidade", "tirotriplo": "power_tirotriplo"}
+        super().__init__(x, y, velocidade=2, image_key=key_map.get(tipo, 'power_vida'))
+    def update(self):
         self.rect.y += self.velocidade
-        self.rect.x += self.direcao * 2
-        if self.rect.x <= 0 or self.rect.x >= LARGURA - self.rect.width:
-            self.direcao *= -1
+        if self.rect.top > ALTURA: self.kill()
+
+class Explosao(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.frames = [pygame.transform.scale(sprites['explosao'], (80, 80))]
+        self.frame_index = 0
+        self.image = self.frames[self.frame_index]
+        self.rect = self.image.get_rect(center=(x, y))
+        self.counter = 0
 
     def update(self):
-        self.atualizar_posicao()
-        if self.rect.y > ALTURA:
-            self.kill()
+        self.counter += 1
+        if self.counter >= 15:
+            self.counter = 0
+            self.frame_index += 1
+            if self.frame_index >= len(self.frames):
+                self.kill()
+            else:
+                self.image = self.frames[self.frame_index]
 
-
-# Classe auxiliar (enemies com vida extra)
-class RoboComVida(Robo):
-    def __init__(self, x, y, velocidade, image_key, vida=1):
-        super().__init__(x, y, velocidade, image_key)
-        self.vida = vida
-
-
-# -----------------------
-# GRUPOS E VARIÁVEIS INICIAIS
-# -----------------------
 todos_sprites = pygame.sprite.Group()
 inimigos = pygame.sprite.Group()
 tiros = pygame.sprite.Group()
@@ -464,34 +584,125 @@ tempo_velocidade = 0
 tempo_tirotriplo = 0
 delay_tiro = 0
 
-# Easter egg flags
 cacador_transformacao = None
 cacador_ja_conhecido = False
 
-estado_jogo = "NORMAL"
-aviso_timer = 0
+estado_jogo = "MENU"
 
-# -----------------------
-# LOOP PRINCIPAL
-# -----------------------
+pause_rect = sprites['pause_button_sprite'].get_rect(topright=(LARGURA - 10, 10))
+
+def menu_pausa():
+    global estado_jogo, music_status
+    
+    fundo_pausa = TELA.copy()
+    menu_img = sprites['menu_pause_fundo']
+    menu_rect = menu_img.get_rect(center=(LARGURA // 2, ALTURA // 2))
+
+    menu_w = menu_img.get_width()
+    menu_h = menu_img.get_height()
+    col_w = menu_w // 3 
+
+    rect_play = pygame.Rect(menu_rect.left, menu_rect.top, col_w, menu_h)
+    rect_musica = pygame.Rect(menu_rect.left + col_w, menu_rect.top, col_w, menu_h) 
+    rect_sair = pygame.Rect(menu_rect.left + 2 * col_w, menu_rect.top, col_w, menu_h)
+    
+    stop_music()
+    
+    while estado_jogo == "PAUSED":
+        
+        TELA.blit(fundo_pausa, (0, 0))
+        TELA.blit(menu_img, menu_rect)
+        
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                estado_jogo = "NORMAL" if chefao is None else "BOSS"
+                if music_status:
+                    play_music('trilha_boss' if chefao else 'trilha_jogo')
+                return
+            
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                x, y = event.pos
+                
+                if rect_play.collidepoint(x, y):
+                    play_sfx('clique_botao')
+                    estado_jogo = "NORMAL" if chefao is None else "BOSS"
+                    if music_status:
+                        play_music('trilha_boss' if chefao else 'trilha_jogo')
+                    return
+                
+                elif rect_musica.collidepoint(x, y):
+                    play_sfx('clique_botao')
+                    music_status = not music_status
+                    print(f"Música: {'Ligada' if music_status else 'Desligada'}")
+
+                elif rect_sair.collidepoint(x, y):
+                    play_sfx('clique_botao')
+                    reset_game_state()
+                    estado_jogo = "MENU"
+                    return
+
+        clock.tick(FPS)
+
+intro_video = "lv_0_20251208094527.mp4"
+if OPENCV_OK and os.path.exists(intro_video):
+    try:
+        tocar_video_intro(intro_video)
+    except Exception as e:
+        print("Falha ao reproduzir intro:", e)
+else:
+    print("Cutscene pulada (OpenCV ausente ou arquivo não existe).")
+
 rodando = True
 while rodando:
     clock.tick(FPS)
 
-    # TIRO DO JOGADOR
-    keys = pygame.key.get_pressed()
-    delay_tiro += 0.2
-    if delay_tiro >= 4:
+    if estado_jogo == "MENU":
+        tela_inicial()
+        continue
+    
+    if estado_jogo == "COUNTDOWN":
+        contagem_regressiva()
+        continue
+
+    if estado_jogo == "GAME_OVER":
+        tela_game_over(pontos)
+        continue
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            rodando = False
+
+        if estado_jogo in ["NORMAL", "BOSS"]:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                estado_jogo = "PAUSED"
+            
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if pause_rect.collidepoint(event.pos):
+                    play_sfx('clique_botao')
+                    estado_jogo = "PAUSED"
+
+        if estado_jogo == "WIN":
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                reset_game_state()
+                estado_jogo = "COUNTDOWN"
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                reset_game_state()
+                estado_jogo = "MENU"
+
+    if estado_jogo in ["NORMAL", "BOSS", "BOSS_INCOMING"]:
+        keys = pygame.key.get_pressed()
+        delay_tiro += 0.2
         if keys[pygame.K_SPACE]:
             delay_tiro_ajustado = 2 if jogador.transformado else 4
             if delay_tiro >= delay_tiro_ajustado:
-                if tempo_tirotriplo > 0:
-                    t1 = Tiro(jogador.rect.centerx, jogador.rect.y)
-                    t2 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
-                    t3 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
-                    for t in (t1, t2, t3):
-                        todos_sprites.add(t); tiros.add(t)
-                elif jogador.transformado:
+                play_sfx('tiro')
+                if tempo_tirotriplo > 0 or jogador.transformado:
                     t1 = Tiro(jogador.rect.centerx, jogador.rect.y)
                     t2 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, -1)
                     t3 = TiroDiagonal(jogador.rect.centerx, jogador.rect.y, 1)
@@ -502,209 +713,237 @@ while rodando:
                     todos_sprites.add(t); tiros.add(t)
                 delay_tiro = 0
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            rodando = False
+        if pontos >= 50 and estado_jogo == "NORMAL":
+            estado_jogo = "BOSS_INCOMING"
+            play_sfx('chegada_chefao')
+            play_music('trilha_boss')
+            aviso_timer = FPS * 2
 
-        # Reiniciar após WIN
-        if estado_jogo == "WIN":
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-                pontos = 0
-                jogador.vida = 5
-                jogador.rect.center = (LARGURA // 2, ALTURA - 60)
-                if jogador.transformado:
-                    jogador.desativar_transformacao()
-                cacador_ja_conhecido = False
-                jogador.cacador_desabilitado = False
-                for grp in (inimigos, tiros, powerups, tiros_chefao, explosoes):
-                    for s in grp.copy():
-                        s.kill()
-                chefao = None
-                estado_jogo = "NORMAL"
+        if estado_jogo == "BOSS_INCOMING":
+            aviso_timer -= 1
+            if aviso_timer <= 0:
+                estado_jogo = "BOSS"
+                chefao = Boss(LARGURA // 2, 120)
+                todos_sprites.add(chefao)
 
-    # CHEFÃO incoming
-    if pontos >= 50 and estado_jogo == "NORMAL":
-        estado_jogo = "BOSS_INCOMING"
-        aviso_timer = FPS * 2
+        if estado_jogo == "BOSS":
+            if chefao:
+                chefao.delay_tiro += 1
+                
+                if chefao.delay_tiro >= 45: 
+                    
+                    if (chefao.delay_tiro % 10) == 0 and chefao.delay_tiro <= 65:
+                        t = BossTiro(chefao.rect.centerx, chefao.rect.bottom + 5, jogador.rect.center)
+                        tiros_chefao.add(t); todos_sprites.add(t)
 
-    if estado_jogo == "BOSS_INCOMING":
-        aviso_timer -= 1
-        if aviso_timer <= 0:
-            estado_jogo = "BOSS"
-            chefao = Boss(LARGURA // 2, 120)
-            todos_sprites.add(chefao)
+                    if chefao.delay_tiro >= 70:
+                        chefao.delay_tiro = 0 
 
-    # SPAWN (NORMAL)
-    if estado_jogo == "NORMAL":
-        spawn_timer += 1
-        if spawn_timer > 60:
-            rand = random.random()
-            x_pos = random.randint(50, LARGURA - 50)
+        if estado_jogo == "NORMAL":
+            spawn_timer += 1
+            if spawn_timer > 60:
+                rand = random.random()
+                x_pos = random.randint(50, LARGURA - 50)
 
-            if rand < 0.15 and not jogador.transformado and not jogador.cacador_desabilitado:
-                robo = RoboCacador(x_pos, -50)
-            elif rand < 0.30:
-                robo = RoboCircular(x_pos, -50, raio=random.randint(20, 60), v_descida=1, v_angular=random.uniform(3, 6))
-            elif rand < 0.45:
-                robo = RoboPulante(x_pos, -50)
-            elif rand < 0.60:
-                robo = RoboRapido(x_pos, -50)
-            elif rand < 0.75:
-                robo = RoboLento(x_pos, -50)
-            else:
-                robo = RoboZigueZague(x_pos, -50)
+                if rand < 0.15 and not jogador.transformado and not jogador.cacador_desabilitado:
+                    robo = RoboCacador(x_pos, -50)
+                elif rand < 0.30:
+                    robo = RoboCircular(x_pos, -50, raio=random.randint(20, 60), v_descida=1, v_angular=random.uniform(3, 6))
+                elif rand < 0.45:
+                    robo = RoboPulante(x_pos, -50)
+                elif rand < 0.60:
+                    robo = RoboRapido(x_pos, -50)
+                elif rand < 0.75:
+                    robo = RoboLento(x_pos, -50)
+                else:
+                    robo = RoboZigueZague(x_pos, -50)
 
-            todos_sprites.add(robo)
-            inimigos.add(robo)
-            spawn_timer = 0
+                todos_sprites.add(robo)
+                inimigos.add(robo)
+                spawn_timer = 0
 
-        # powerups spawn probabilístico (não quando transformado)
-        if random.random() < 0.005 and not jogador.transformado:
-            tipo = random.choice(["vida", "velocidade", "tirotriplo"])
-            r = PowerUp(random.randint(40, LARGURA - 40), -40, tipo)
-            todos_sprites.add(r)
-            powerups.add(r)
+            if random.random() < 0.005 and not jogador.transformado:
+                tipo = random.choice(["vida", "velocidade", "tirotriplo"])
+                r = PowerUp(random.randint(40, LARGURA - 40), -40, tipo)
+                todos_sprites.add(r)
+                powerups.add(r)
 
-    # coleta powerups
-    for p in pygame.sprite.spritecollide(jogador, powerups, True):
-        if p.tipo == "vida":
-            jogador.vida += 1
-        elif p.tipo == "velocidade":
-            jogador.velocidade = 10
-            tempo_velocidade = FPS * 5
-        elif p.tipo == "tirotriplo":
-            tempo_tirotriplo = FPS * 5
+        for p in pygame.sprite.spritecollide(jogador, powerups, True):
+            play_sfx('power_up')
+            if p.tipo == "vida":
+                jogador.vida += 1
+            elif p.tipo == "velocidade":
+                jogador.velocidade = 10
+                tempo_velocidade = FPS * 5
+            elif p.tipo == "tirotriplo":
+                tempo_tirotriplo = FPS * 5
 
-    # colisões: inimigos x tiros -> explosão + drops
-    acertos = pygame.sprite.groupcollide(inimigos, tiros, True, True)
-    for inimigo in acertos:
-        explos = Explosao(inimigo.rect.centerx, inimigo.rect.centery)
-        explosoes.add(explos); todos_sprites.add(explos)
-        pontos += 1
-        # chance de drop ao morrer (10%)
-        if random.random() < 0.10:
-            tipo = random.choice(["vida", "velocidade", "tirotriplo"])
-            p = PowerUp(inimigo.rect.centerx, inimigo.rect.centery, tipo)
-            powerups.add(p); todos_sprites.add(p)
-
-    # hits (quando jogador transformado causa necessidade de mais tiros)
-    hits = pygame.sprite.groupcollide(inimigos, tiros, False, True)
-    for inimigo, lista_tiros in hits.items():
-        dano = len(lista_tiros)
-        if jogador.transformado:
-            if hasattr(inimigo, 'vida'):
-                inimigo.vida -= dano
-                if inimigo.vida <= 0:
-                    inimigo.kill(); pontos += 1
-                    if random.random() < 0.10:
-                        tipo = random.choice(["vida", "velocidade", "tirotriplo"])
-                        p = PowerUp(inimigo.rect.centerx, inimigo.rect.centery, tipo)
-                        powerups.add(p); todos_sprites.add(p)
-            else:
-                if dano >= 2:
-                    inimigo.kill(); pontos += 1
-                    if random.random() < 0.10:
-                        tipo = random.choice(["vida", "velocidade", "tirotriplo"])
-                        p = PowerUp(inimigo.rect.centerx, inimigo.rect.centery, tipo)
-                        powerups.add(p); todos_sprites.add(p)
-        else:
-            # modo normal: 1 tiro mata
-            inimigo.kill(); pontos += len(lista_tiros)
+        acertos = pygame.sprite.groupcollide(inimigos, tiros, True, True)
+        for inimigo in acertos:
+            explos = Explosao(inimigo.rect.centerx, inimigo.rect.centery)
+            explosoes.add(explos); todos_sprites.add(explos)
+            pontos += 1
             if random.random() < 0.10:
                 tipo = random.choice(["vida", "velocidade", "tirotriplo"])
                 p = PowerUp(inimigo.rect.centerx, inimigo.rect.centery, tipo)
                 powerups.add(p); todos_sprites.add(p)
 
-    # dano no chefao
-    if chefao:
-        tiros_acertaram = pygame.sprite.spritecollide(chefao, tiros, True)
-        chefao.vida -= len(tiros_acertaram)
+        hits = pygame.sprite.groupcollide(inimigos, tiros, False, True)
+        for inimigo, lista_tiros in hits.items():
+            dano = len(lista_tiros)
+            if jogador.transformado:
+                if hasattr(inimigo, 'vida') and inimigo.vida > 0:
+                    inimigo.vida -= dano
+                    if inimigo.vida <= 0:
+                        inimigo.kill(); pontos += 1
+                else:
+                    if dano >= 2:
+                        inimigo.kill(); pontos += 1
+            else:
+                inimigo.kill(); pontos += len(lista_tiros)
 
-    # colisão especial: caçador ativa transformação
-    colisao_cacador = pygame.sprite.spritecollide(jogador, inimigos, False)
-    for inimigo in list(colisao_cacador):
-        if isinstance(inimigo, RoboCacador) and not jogador.transformado:
-            jogador.ativar_transformacao()
-            inimigo.kill()
-            cacador_ja_conhecido = True
-        elif isinstance(inimigo, RoboCacador) and jogador.transformado:
-            inimigo.kill()
+            if inimigo.alive() == False and random.random() < 0.10:
+                tipo = random.choice(["vida", "velocidade", "tirotriplo"])
+                p = PowerUp(inimigo.rect.centerx, inimigo.rect.centery, tipo)
+                powerups.add(p); todos_sprites.add(p)
 
-    # tiros do chefao atingem jogador
-    if pygame.sprite.spritecollide(jogador, tiros_chefao, True):
-        jogador.vida -= 1
-        if jogador.transformado:
-            jogador.desativar_transformacao()
-            cacador_ja_conhecido = False
-        if jogador.vida <= 0:
-            print("GAME OVER")
-            rodando = False
+        if chefao:
+            tiros_acertaram = pygame.sprite.spritecollide(chefao, tiros, True)
+            
+            for tiro in tiros_acertaram:
+                chefao.vida -= 1
 
-    # colisão com inimigos normais (já removemos caçador acima)
-    colisao_inimigos = pygame.sprite.spritecollide(jogador, inimigos, True)
-    for inimigo in colisao_inimigos:
-        if not isinstance(inimigo, RoboCacador):
+                if random.random() < 0.10: 
+                    tipo = random.choice(["vida", "velocidade", "tirotriplo"])
+                    p = PowerUp(chefao.rect.centerx, chefao.rect.centery, tipo)
+                    powerups.add(p); todos_sprites.add(p)
+                    
+            if chefao.vida <= 0:
+                chefao.kill()
+                chefao = None
+                estado_jogo = "WIN"
+                play_sfx('morte_chefao')
+                stop_music()
+                pontos += 50
+
+        colisao_cacador = pygame.sprite.spritecollide(jogador, inimigos, False)
+        for inimigo in list(colisao_cacador):
+            if isinstance(inimigo, RoboCacador) and not jogador.transformado:
+                play_sfx('transformacao_easter_egg')
+                jogador.ativar_transformacao()
+                inimigo.kill()
+                cacador_ja_conhecido = True
+            elif isinstance(inimigo, RoboCacador) and jogador.transformado:
+                inimigo.kill()
+
+        if pygame.sprite.spritecollide(jogador, tiros_chefao, True):
             jogador.vida -= 1
             if jogador.transformado:
+                play_sfx('perca_easter_egg')
                 jogador.desativar_transformacao()
                 cacador_ja_conhecido = False
             if jogador.vida <= 0:
-                print("GAME OVER")
-                rodando = False
+                estado_jogo = "GAME_OVER"
+        
+        colisao_inimigos = pygame.sprite.spritecollide(jogador, inimigos, True)
+        for inimigo in colisao_inimigos:
+            if not isinstance(inimigo, RoboCacador):
+                jogador.vida -= 1
+                if jogador.transformado:
+                    play_sfx('perca_easter_egg')
+                    jogador.desativar_transformacao()
+                    cacador_ja_conhecido = False
+                if jogador.vida <= 0:
+                    estado_jogo = "GAME_OVER"
 
-    # timers
-    if tempo_velocidade > 0:
-        tempo_velocidade -= 1
-        if tempo_velocidade == 0:
-            jogador.velocidade = jogador.velocidade_original
+        if tempo_velocidade > 0:
+            tempo_velocidade -= 1
+            if tempo_velocidade == 0:
+                jogador.velocidade = jogador.velocidade_original
+        
+        if tempo_tirotriplo > 0:
+            tempo_tirotriplo -= 1
+            
+        todos_sprites.update()
+        tiros_chefao.update()
+        explosoes.update()
 
-    if tempo_tirotriplo > 0:
-        tempo_tirotriplo -= 1
+    if estado_jogo in ["NORMAL", "BOSS", "BOSS_INCOMING"]:
+        if jogador.transformado:
+            fundo_mod = fundo.copy()
+            overlay = pygame.Surface((LARGURA, ALTURA))
+            overlay.fill((0, 40, 40))
+            overlay.set_alpha(120)
+            fundo_mod.blit(overlay, (0, 0))
+            TELA.blit(fundo_mod, (0, 0))
+        else:
+            TELA.blit(fundo, (0, 0))
 
-    todos_sprites.update()
-    tiros_chefao.update()
-    explosoes.update()
+        todos_sprites.draw(TELA)
+        explosoes.draw(TELA)
 
-    # DESENHO DO FUNDO (com efeito quando transformado)
-    if jogador.transformado:
-        fundo_mod = fundo.copy()
-        overlay = pygame.Surface((LARGURA, ALTURA))
-        overlay.fill((0, 40, 40))
-        overlay.set_alpha(120)
-        fundo_mod.blit(overlay, (0, 0))
-        TELA.blit(fundo_mod, (0, 0))
-    else:
+        TELA.blit(sprites['pause_button_sprite'], pause_rect)
+
+        if estado_jogo == "BOSS_INCOMING":
+            cor_aviso = (255, 0, 0) 
+            
+            if (aviso_timer // 10) % 2 == 0:
+                 cor_aviso = (255, 255, 0) 
+            
+            font_aviso = pygame.font.SysFont(None, 100, bold=True)
+            texto_principal = "BOSS CHEGANDO!" 
+            
+            sombra_aviso = font_aviso.render(texto_principal, True, (0, 0, 0))
+            TELA.blit(sombra_aviso, (LARGURA // 2 - sombra_aviso.get_width() // 2 + 3, ALTURA // 2 - 40 + 3))
+            
+            texto_aviso = font_aviso.render(texto_principal, True, cor_aviso)
+            TELA.blit(texto_aviso, (LARGURA // 2 - texto_aviso.get_width() // 2, ALTURA // 2 - 40))
+
+        if estado_jogo == "BOSS" and chefao:
+            barra_w = 300  
+            barra_h = 20    
+            barra_x = LARGURA // 2 - barra_w // 2 
+            barra_y = 10
+            
+            pygame.draw.rect(TELA, (0, 0, 0), (barra_x, barra_y, barra_w, barra_h))
+            pygame.draw.rect(TELA, (255, 0, 0), (barra_x, barra_y, barra_w, barra_h), 3) 
+            
+            vida_atual_w = int((chefao.vida / 100) * barra_w)
+            
+            cor_vida = (0, 255, 0) 
+            if chefao.vida < 50:
+                 cor_vida = (255, 255, 0) 
+            if chefao.vida < 20:
+                 cor_vida = (255, 0, 0) 
+                 
+            pygame.draw.rect(TELA, cor_vida, (barra_x, barra_y, vida_atual_w, barra_h))
+            
+            font_boss = pygame.font.SysFont(None, 24, bold=True)
+            texto_vida = font_boss.render(f"BOSS (HP: {chefao.vida})", True, (255, 255, 255))
+            TELA.blit(texto_vida, (LARGURA // 2 - texto_vida.get_width() // 2, barra_y + 3))
+
+        font = pygame.font.SysFont(None, 30)
+        texto = font.render(f"Vida: {jogador.vida} | Pontos: {pontos}", True, (255, 255, 255))
+        TELA.blit(texto, (10, 10))
+        
+    elif estado_jogo == "PAUSED":
+        menu_pausa()
+
+    elif estado_jogo == "WIN":
         TELA.blit(fundo, (0, 0))
-
-    # Desenha sprites e explosões
-    todos_sprites.draw(TELA)
-    explosoes.draw(TELA)
-
-    # HUD
-    font = pygame.font.SysFont(None, 30)
-    texto = font.render(f"Vida: {jogador.vida} | Pontos: {pontos}", True, (255, 255, 255))
-    TELA.blit(texto, (10, 10))
-
-    if jogador.transformado:
-        status_text = font.render("TRANSFORMADO!", True, (0, 255, 255))
-        TELA.blit(status_text, (LARGURA - 220, 10))
-
-    # HUD do chefe
-    if estado_jogo == "BOSS" and chefao:
-        vida_pct = max(0, chefao.vida) / 100
-        HUD_LARGURA = 300
-        HUD_X = (LARGURA - HUD_LARGURA) // 2
-        pygame.draw.rect(TELA, (60, 0, 0), (HUD_X, 20, HUD_LARGURA, 12))
-        pygame.draw.rect(TELA, (0, 255, 0), (HUD_X, 20, int(HUD_LARGURA * vida_pct), 12))
-
-    if estado_jogo == "BOSS_INCOMING":
-        text = font.render("CHEFÃO SE APROXIMANDO!", True, (255, 0, 0))
-        TELA.blit(text, (LARGURA // 2 - 150, ALTURA // 2))
-
-    if estado_jogo == "WIN":
-        win_text = font.render("VOCÊ VENCEU! PRESSIONE ENTER PARA REINICIAR", True, (255, 255, 0))
-        TELA.blit(win_text, (100, ALTURA // 2))
-
+        
+        font_titulo = pygame.font.SysFont(None, 120, bold=True)
+        font_sub = pygame.font.SysFont(None, 40)
+        titulo = font_titulo.render("VITÓRIA!", True, (0, 255, 0))
+        score_text = font_sub.render(f"Pontuação Total: {pontos}", True, (255, 255, 255))
+        instrucao = font_sub.render("Pressione ENTER para Recomeçar ou ESC para Menu", True, (150, 150, 150))
+        
+        TELA.blit(titulo, (LARGURA // 2 - titulo.get_width() // 2, ALTURA // 3))
+        TELA.blit(score_text, (LARGURA // 2 - score_text.get_width() // 2, ALTURA // 2))
+        TELA.blit(instrucao, (LARGURA // 2 - instrucao.get_width() // 2, ALTURA * 2 // 3))
+        
+    
     pygame.display.flip()
 
 pygame.quit()
+sys.exit()
