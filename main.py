@@ -462,15 +462,26 @@ class TiroDiagonal(Entidade):
 class RoboZigueZague(Entidade):
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=3, image_key='robo_zigue')
+        self.direcao = 1
+        self.hspeed = 3
+
     def update(self):
+        
         self.rect.y += self.velocidade
-        if self.rect.top > ALTURA: self.kill()
+        self.rect.x += self.direcao * self.hspeed
+
+        
+        if self.rect.left <= 0 or self.rect.right >= LARGURA:
+            self.direcao *= -1
+
+        if self.rect.top > ALTURA:
+            self.kill()
 
 class RoboCacador(Entidade):
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=2, image_key='robo_cacador')
     def update(self):
-        # Robo caçador persegue o jogador; não deve ler teclas do jogador
+       
         if 'jogador' in globals() and jogador is not None:
             dx = jogador.rect.centerx - self.rect.centerx
             dy = jogador.rect.centery - self.rect.centery
@@ -481,10 +492,10 @@ class RoboCacador(Entidade):
                 self.rect.x += int(nx * self.velocidade)
                 self.rect.y += int(ny * self.velocidade)
         else:
-            # fallback: desce lentamente
+          
             self.rect.y += self.velocidade
 
-        # manter dentro da tela
+       
         self.rect.x = max(0, min(self.rect.x, LARGURA - self.rect.width))
         self.rect.y = max(0, min(self.rect.y, ALTURA - self.rect.height))
         if self.rect.top > ALTURA:
@@ -507,7 +518,7 @@ class RoboRapido(Entidade):
 class RoboCircular(Entidade):
     def __init__(self, x, y, raio, v_descida, v_angular):
         super().__init__(x, y, velocidade=v_descida, image_key='robo_ciclico')
-        # centro guarda o ponto central do movimento circular (desce ao longo do tempo)
+       
         self.centro_x = float(self.rect.centerx)
         self.centro_y = float(self.rect.centery)
         self.angulo = random.uniform(0, 360)
@@ -515,26 +526,23 @@ class RoboCircular(Entidade):
         self.v_angular = v_angular
 
     def update(self):
-        # avança o centro verticalmente (descida)
         self.centro_y += self.velocidade
 
-        # avança o ângulo e calcula posição circular em torno do centro
         self.angulo += self.v_angular
         rad = math.radians(self.angulo)
         self.rect.centerx = int(self.centro_x + self.raio * math.cos(rad))
         self.rect.centery = int(self.centro_y + self.raio * math.sin(rad))
 
-        # se o centro mais o raio passou da tela, remove
         if self.rect.top > ALTURA or (self.centro_y - self.raio) > ALTURA:
             self.kill()
 
 class RoboPulante(Entidade):
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=2, image_key='robo_saltador')
-        # centro do movimento (desce ao longo do tempo)
         self.centro_x = float(self.rect.centerx)
         self.centro_y = float(self.rect.centery)
-        # parâmetros do salto (comportamento tipo canguru)
+        
+       
         self.jump_offset = 0.0
         self.jump_v = 0.0
         self.gravity = 0.8
@@ -543,31 +551,25 @@ class RoboPulante(Entidade):
         self.next_jump_timer = self.next_jump_timer
 
     def update(self):
-        # desce continuamente
         self.centro_y += self.velocidade
 
-        # timer para iniciar o próximo salto
         self.next_jump_timer -= 1
         if self.next_jump_timer <= 0 and self.jump_v == 0.0:
             self.jump_v = -random.uniform(*self.jump_strength_range)
             self.next_jump_timer = random.randint(30, 80)
 
-        # física simples do salto (velocidade + gravidade)
+       
         if self.jump_v != 0.0:
             self.jump_v += self.gravity
             self.jump_offset += self.jump_v
-            # quando volta ao nível da base, "aterra"
+           
             if self.jump_offset > 0:
                 self.jump_offset = 0.0
                 self.jump_v = 0.0
-
-        # (sem invulnerabilidade aérea — morre como os outros inimigos)
-
-        # aplicar posição final
+        
         self.rect.centerx = int(self.centro_x)
         self.rect.centery = int(self.centro_y + self.jump_offset)
-
-        # remoção quando sair da tela
+        
         if self.rect.top > ALTURA or (self.centro_y -  self.rect.height) > ALTURA:
             self.kill()
 
@@ -841,56 +843,25 @@ while rodando:
                 tempo_velocidade = FPS * 5
             elif p.tipo == "tirotriplo":
                 tempo_tirotriplo = FPS * 5
-
-        # tratar colisões entre inimigos e tiros
-        # não remover tiros automaticamente: usamos invulnerabilidade aérea para pulantes
-        colisoes = pygame.sprite.groupcollide(inimigos, tiros, False, False)
+ 
+        colisoes = pygame.sprite.groupcollide(inimigos, tiros, False, True)
         for inimigo, lista_tiros in colisoes.items():
-            # se inimigo estiver invulnerável (ex.: pulando), ignorar colisão e deixar tiros seguirem
-            if getattr(inimigo, 'invulneravel', False):
+            
+            if isinstance(inimigo, Boss):
+               
+                for t in lista_tiros:
+                    tiros.add(t); todos_sprites.add(t)
                 continue
 
-            dano = len(lista_tiros)
-
-            # remover os tiros que acertaram, pois agora vamos processar o impacto
-            for t in lista_tiros:
-                t.kill()
-
-            # inimigos com atributo 'vida' recebem dano progressivo
-            if hasattr(inimigo, 'vida'):
-                inimigo.vida -= dano
-                if inimigo.vida <= 0:
-                    explos = Explosao(inimigo.rect.centerx, inimigo.rect.centery)
-                    explosoes.add(explos); todos_sprites.add(explos)
-                    pontos += 1
-                    if random.random() < 0.10:
-                        tipo = random.choice(["vida", "velocidade", "tirotriplo"])
-                        p = PowerUp(inimigo.rect.centerx, inimigo.rect.centery, tipo)
-                        powerups.add(p); todos_sprites.add(p)
-                    inimigo.kill()
-
-            else:
-                # comportamento para inimigos sem 'vida'
-                if jogador.transformado:
-                    # jogador transformado precisa acertar 2 tiros para matar inimigos comuns
-                    if dano >= 2:
-                        explos = Explosao(inimigo.rect.centerx, inimigo.rect.centery)
-                        explosoes.add(explos); todos_sprites.add(explos)
-                        pontos += 1
-                        if random.random() < 0.10:
-                            tipo = random.choice(["vida", "velocidade", "tirotriplo"])
-                            p = PowerUp(inimigo.rect.centerx, inimigo.rect.centery, tipo)
-                            powerups.add(p); todos_sprites.add(p)
-                        inimigo.kill()
-                else:
-                    explos = Explosao(inimigo.rect.centerx, inimigo.rect.centery)
-                    explosoes.add(explos); todos_sprites.add(explos)
-                    pontos += dano
-                    if random.random() < 0.10:
-                        tipo = random.choice(["vida", "velocidade", "tirotriplo"])
-                        p = PowerUp(inimigo.rect.centerx, inimigo.rect.centery, tipo)
-                        powerups.add(p); todos_sprites.add(p)
-                    inimigo.kill()
+            
+            explos = Explosao(inimigo.rect.centerx, inimigo.rect.centery)
+            explosoes.add(explos); todos_sprites.add(explos)
+            pontos += 1
+            if random.random() < 0.10:
+                tipo = random.choice(["vida", "velocidade", "tirotriplo"])
+                p = PowerUp(inimigo.rect.centerx, inimigo.rect.centery, tipo)
+                powerups.add(p); todos_sprites.add(p)
+            inimigo.kill()
 
         if chefao:
             tiros_acertaram = pygame.sprite.spritecollide(chefao, tiros, True)
